@@ -1,0 +1,86 @@
+// swift-tools-version: 6.1
+
+import PackageDescription
+
+let package = Package(
+    name: "AIReasoningCore",
+    platforms: [
+        .macOS(.v14),
+        .iOS(.v17),
+    ],
+    products: [
+        .library(name: "AIReasoningCore", targets: ["AIReasoningCore"]),
+        .library(name: "AIReasoningiSH", targets: ["AIReasoningiSH"]),
+        .executable(name: "ai-reasoning", targets: ["AIReasoningCLI"]),
+    ],
+    dependencies: [
+        .package(
+            url: "https://github.com/huggingface/AnyLanguageModel.git",
+            exact: "0.9.0"
+        ),
+        .package(
+            url: "https://github.com/MacPaw/OpenAI.git",
+            exact: "0.5.1"
+        ),
+    ],
+    targets: [
+        .target(
+            name: "AIReasoningCore",
+            dependencies: [
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
+            ]
+        ),
+        .target(
+            name: "AIReasoningiSHRuntime",
+            path: "Sources/AIReasoningiSHRuntime",
+            publicHeadersPath: "include"
+        ),
+        .target(
+            name: "AIReasoningiSH",
+            dependencies: [
+                "AIReasoningCore",
+                "AIReasoningiSHRuntime",
+            ]
+        ),
+        .target(
+            name: "AIReasoningiSHTestSupport",
+            path: "Tests/AIReasoningiSHTestSupport",
+            publicHeadersPath: "include"
+        ),
+        .target(
+            name: "AIReasoningOpenAICompatibility",
+            dependencies: [
+                "AIReasoningCore",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
+                .product(name: "OpenAI", package: "OpenAI"),
+            ]
+        ),
+        .executableTarget(
+            name: "AIReasoningCLI",
+            dependencies: ["AIReasoningOpenAICompatibility"]
+        ),
+        .testTarget(
+            name: "AIReasoningCoreTests",
+            dependencies: [
+                "AIReasoningCore",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
+            ],
+            resources: [.copy("Fixtures")]
+        ),
+        .testTarget(
+            name: "AIReasoningOpenAICompatibilityTests",
+            dependencies: [
+                "AIReasoningOpenAICompatibility",
+                .product(name: "OpenAI", package: "OpenAI"),
+            ],
+            resources: [.copy("Fixtures")]
+        ),
+        .testTarget(
+            name: "AIReasoningiSHTests",
+            dependencies: [
+                "AIReasoningiSH",
+                "AIReasoningiSHTestSupport",
+            ]
+        ),
+    ]
+)

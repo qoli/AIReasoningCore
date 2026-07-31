@@ -1,0 +1,10 @@
+{
+  "model": "fixture-model",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ],
+  "stream": false
+}

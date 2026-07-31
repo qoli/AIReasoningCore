@@ -1,0 +1,2 @@
+This test release includes iSH source governed by the applicable GPL license
+and the additional terms in LICENSE.IOS.

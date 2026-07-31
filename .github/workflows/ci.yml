@@ -1,0 +1,17 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - run: swift test
+      - run: ./Scripts/test-cli-sigint.sh
+      - run: ./Scripts/verify-upstreams.sh
+      - run: ./Scripts/verify-no-ish-linkage.sh
