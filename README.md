@@ -101,10 +101,11 @@ cancellation.
 ./Scripts/test-ios-smoke-simulator.sh
 ```
 
-The baseline target links the `AIReasoningiSH` dynamic bridge but not the GPL
-iSH runtime. Codex and Claude therefore display typed `runtimeNotLinked` until
-an integrating app explicitly links the prepared runtime. The app never
-switches to another backend when the selected backend is unavailable.
+The baseline target links `AIReasoningiSH` but not the GPL iSH host runtime.
+Codex and Claude therefore display typed `runtimeNotLinked` until an
+integrating app explicitly links, registers and boots the generated host.
+`runtimeNotBooted` distinguishes a linked host from a prepared writable rootfs.
+The app never switches backend when the selected backend is unavailable.
 
 For an iSH-linked app, Codex login must be completed inside that app's own iSH
 root filesystem; a login in the standalone iSH app is stored in a different
@@ -122,15 +123,30 @@ by a normal package build.
 ```bash
 ./Scripts/verify-upstreams.sh
 ./Scripts/prepare-ish-integration.sh   # explicit opt-in; applies the patch
+./Scripts/build-ish-host.sh /absolute/output
 ./Scripts/verify-no-ish-linkage.sh
 ```
 
-The prepare command intentionally leaves only
-`app/ISHShellExecutor.h` and `.m` modified inside the iSH worktree. It is
-idempotent for that exact patch and rejects any other dirty state. See
+The prepare command intentionally leaves only `kernel/exit.c` and
+`kernel/task.h` modified inside the iSH worktree. The separate build command
+produces `AIReasoningiSHHost.xcframework` plus the arm64 Linux `ishsv` guest
+supervisor; it does not modify the upstream Xcode project. Both commands reject
+unknown dirty state. See
 [Upstream maintenance](Docs/UPSTREAMS.md) and
 [iSH compliance](Docs/ISH-COMPLIANCE.md) before updating or distributing an
 iSH-linked app.
+
+The repository also includes an opt-in `AIReasoningiSHHostSmoke` iOS scheme.
+After supplying an explicit local fakefs archive, it proves the linked host can
+boot and complete a streamed guest-process round trip on an arm64 simulator:
+
+```bash
+./Scripts/test-ish-host-smoke-simulator.sh \
+  --rootfs-archive /absolute/path/to/fs.tar.gz
+```
+
+The rootfs is scoped to the generated smoke app and its simulator container; it
+is not added to source control or shared with the standalone iSH app.
 
 ## Verification
 

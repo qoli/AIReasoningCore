@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 . "$ROOT/Upstreams.env"
+PATCH="$ROOT/Patches/iSH/$(sed -n '1p' "$ROOT/Patches/iSH/series")"
 
 fail() {
     printf '%s\n' "AIReasoningCore iSH preparation failed: $*" >&2
@@ -22,7 +23,7 @@ git -C "$ROOT" -c submodule.iSH.update=checkout \
 if ! git -C "$ROOT/Upstreams/iSH" diff --quiet ||
    [ -n "$(git -C "$ROOT/Upstreams/iSH" status --porcelain --untracked-files=all)" ]; then
     if git -C "$ROOT/Upstreams/iSH" apply --reverse --check \
-        "$ROOT/Patches/iSH/0001-interactive-stdin.patch" 2>/dev/null; then
+        "$PATCH" 2>/dev/null; then
         printf '%s\n' "AIReasoningCore iSH patch is already applied."
         exit 0
     fi
@@ -30,12 +31,12 @@ if ! git -C "$ROOT/Upstreams/iSH" diff --quiet ||
 fi
 
 git -C "$ROOT/Upstreams/iSH" apply --check --whitespace=error-all \
-    "$ROOT/Patches/iSH/0001-interactive-stdin.patch"
+    "$PATCH"
 git -C "$ROOT/Upstreams/iSH" apply --whitespace=error-all \
-    "$ROOT/Patches/iSH/0001-interactive-stdin.patch"
+    "$PATCH"
 
 git -C "$ROOT/Upstreams/iSH" apply --reverse --check \
-    "$ROOT/Patches/iSH/0001-interactive-stdin.patch" ||
+    "$PATCH" ||
     fail "applied iSH patch cannot be reversed cleanly"
 
 printf '%s\n' "AIReasoningCore iSH integration patch applied."

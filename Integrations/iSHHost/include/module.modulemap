@@ -1,0 +1,4 @@
+module AIReasoningiSHHost {
+    header "AIReasoningiSHHost.h"
+    export *
+}

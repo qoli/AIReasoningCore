@@ -55,12 +55,14 @@ let package = Package(
                 "ContentView.swift",
             ],
             sources: [
+                "ISHHostBootstrap.swift",
                 "SmokeConfiguration.swift",
                 "SmokeViewModel.swift",
             ]
         ),
         .target(
             name: "AIReasoningiSHTestSupport",
+            dependencies: ["AIReasoningiSHRuntime"],
             path: "Tests/AIReasoningiSHTestSupport",
             publicHeadersPath: "include"
         ),

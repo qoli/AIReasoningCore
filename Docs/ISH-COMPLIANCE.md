@@ -4,13 +4,24 @@
 artifacts neither compile nor link iSH; `verify-no-ish-linkage.sh` checks this
 boundary.
 
-The pinned OpenMinis `libiSHApp` target does not compile
-`app/ISHShellExecutor.m`. The consuming opt-in Xcode target must compile the
-approved patched file explicitly, link the pinned iSH static libraries, and
-boot the iSH root filesystem before using `AIReasoningiSH`. Do not add the file
-to the upstream `.pbxproj`: keeping that target-membership injection in the
-root-owned consumer project preserves upstream updateability and the approved
-two-file patch boundary.
+`Scripts/build-ish-host.sh` builds the pinned upstream `libiSHApp` target and
+combines it with the GPL host/protocol implementation under
+`Integrations/iSHHost`. It emits an opt-in XCFramework and guest supervisor
+without changing the upstream `.pbxproj`. The only upstream patch is the
+two-file embedding-safe system halt hook; stdin, stdout, process groups and
+session multiplexing live entirely in this repository.
+
+An app that consumes the XCFramework must also import `AIReasoningiSH`, call
+`ISHEmbeddedRuntime.register(hostRuntime:)` with
+`ARISHOpenMinisHostRuntimeV1()`, prepare an app-owned writable fakefs using
+`ISHRootFileSystemPreparer`, and explicitly boot it with the generated `ishsv`.
+No registration, rootfs or executor fallback is provided.
+
+`AIReasoningiSHHostSmoke` demonstrates this consumer-owned target boundary. Its
+end-to-end runner accepts a caller-provided fakefs archive, verifies and stages
+it only into a temporary app bundle, boots the embedded runtime, and requires a
+successful guest command. No rootfs image or authentication state belongs in
+the repository or the corresponding-source archive.
 
 iSH identifies its code as GPLv3, with additional terms in `LICENSE.IOS`, and
 describes additional GPLv2 licensing for qualifying contributions. This
@@ -20,7 +31,8 @@ links iSH:
 1. Have the release owner review GPL obligations and `LICENSE.IOS`.
 2. Include the required copyright and license notices in the shipped app.
 3. Publish the complete corresponding source for the precise iSH gitlink,
-   approved patch, relevant nested dependency sources and build instructions.
+   approved patch, host/protocol/supervisor sources, relevant nested dependency
+   sources and build instructions.
 4. Keep that source available for the legally required period and ensure the
    distributed binary can be matched to its source bundle hash.
 5. Run `package-ish-source.sh` and `verify-ish-release-compliance.sh` against

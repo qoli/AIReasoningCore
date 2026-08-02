@@ -23,8 +23,18 @@ tar -tzf "$SOURCE" | grep -Eq '/iSH/LICENSE\.md$' ||
     fail "source bundle lacks iSH LICENSE.md"
 tar -tzf "$SOURCE" | grep -Eq '/iSH/LICENSE\.IOS$' ||
     fail "source bundle lacks iSH LICENSE.IOS"
-tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Patches/iSH/0001-interactive-stdin\.patch$' ||
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Patches/iSH/0001-embedded-system-halt-hook\.patch$' ||
     fail "source bundle lacks the approved patch"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Integrations/iSHHost/host/ishembed\.c$' ||
+    fail "source bundle lacks the embedding host source"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Integrations/iSHHost/supervisor/ishsv\.c$' ||
+    fail "source bundle lacks the guest supervisor source"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Sources/AIReasoningiSH/ISHEmbeddedProcessExecutor\.swift$' ||
+    fail "source bundle lacks the Swift executor source"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Scripts/toolchain/clang$' ||
+    fail "source bundle lacks the pinned host toolchain wrapper"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Package\.swift$' ||
+    fail "source bundle lacks the Swift package manifest"
 grep -Eiq 'iSH' "$NOTICES" || fail "release notices do not name iSH"
 grep -Eiq 'GPL' "$NOTICES" || fail "release notices do not identify the GPL"
 

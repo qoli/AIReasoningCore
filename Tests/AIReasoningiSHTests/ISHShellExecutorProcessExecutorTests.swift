@@ -5,12 +5,12 @@ import Foundation
 import Testing
 
 @Suite
-struct ISHShellExecutorProcessExecutorTests {
+struct ISHEmbeddedProcessExecutorTests {
     @Test
     func runtimeBridgeIsExplicitWhenUnlinkedAndSupportsInteractiveLifecycle() async throws {
-        let executor = ISHShellExecutorProcessExecutor()
+        let runtime = ISHEmbeddedRuntime()
+        let executor = ISHEmbeddedProcessExecutor(runtime: runtime)
 
-        #expect(executor.unavailableReason == .runtimeNotLinked)
         #expect(
             !executor.isExecutableAvailable(
                 at: URL(fileURLWithPath: "/usr/local/bin/codex")
@@ -18,7 +18,13 @@ struct ISHShellExecutorProcessExecutorTests {
         )
 
         #expect(ARISHFixtureInstall())
-        #expect(executor.unavailableReason == nil)
+        let fixture = try makeBootFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        try runtime.boot(.init(
+            rootFileSystemURL: fixture.root,
+            supervisorExecutableURL: fixture.supervisor
+        ))
+        #expect(executor.isExecutableAvailable(at: URL(fileURLWithPath: "/usr/local/bin/codex")))
 
         let session = try await executor.start(request())
         let binary = Data((0..<131_072).map { UInt8($0 % 251) })
@@ -61,6 +67,22 @@ struct ISHShellExecutorProcessExecutorTests {
         #expect(ARISHFixtureSignalAtIndex(1) == 15)
         #expect(ARISHFixtureSignalAtIndex(2) == 9)
         ARISHFixtureComplete(130)
+    }
+
+    private func makeBootFixture() throws -> (root: URL, supervisor: URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("data", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(
+            atPath: root.appendingPathComponent("meta.db").path,
+            contents: Data("fixture".utf8)
+        )
+        let supervisor = root.appendingPathComponent("ishsv")
+        FileManager.default.createFile(atPath: supervisor.path, contents: Data([0x7f, 0x45, 0x4c, 0x46]))
+        return (root, supervisor)
     }
 
     private func request() -> AgentProcessRequest {

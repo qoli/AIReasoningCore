@@ -31,24 +31,25 @@ The OpenMinis fork remains responsible for its own relationship to
 `ish-app/ish`.
 
 1. Start from a clean root worktree and leave the current pin intact.
-2. Evaluate the candidate in a temporary checkout. If upstream now provides
-   equivalent interactive stdin and process-group APIs, delete the root patch
-   and bridge to that API.
-3. Otherwise regenerate one patch limited to
-   `app/ISHShellExecutor.h` and `app/ISHShellExecutor.m`.
+2. Evaluate the candidate in a temporary checkout. The host/protocol/
+   supervisor implementation belongs to `Integrations/iSHHost`, not the fork.
+3. If upstream now provides an embedding-safe system halt callback, delete the
+   patch and bind to that API. Otherwise regenerate the single patch limited to
+   `kernel/exit.c` and `kernel/task.h`; ordinary iSH must retain `_exit(0)`.
 4. Never use `git apply --3way`; patch drift rejects the candidate.
 5. Update the gitlink, `ISH_COMMIT`, `ISH_VERSION`, and
    `Patches/manifest.sha256`.
 6. Run `verify-upstreams.sh`. It checks the official remote, gitlink, manifest,
    clean replay and identical diff hashes across two independent replays.
-7. Run `prepare-ish-integration.sh`, the bridge tests, patched ObjC compile,
-   Xcode link/launch smoke and the release compliance gate.
+7. Run `prepare-ish-integration.sh`, `build-ish-host.sh`, the runtime/bridge
+   tests, an Xcode link/launch smoke and the release compliance gate.
 
 Do not commit inside `Upstreams/iSH`. If a candidate fails, retain the previous
 pin.
 
 ## Local build prerequisites
 
-The OpenMinis Xcode build follows the upstream prerequisites, including Meson,
-Ninja, libarchive, Clang and LLD. Missing prerequisites are build failures; the
-verification scripts do not install or substitute tools.
+The opt-in host builder uses the upstream `libiSHApp` Xcode target for iOS and
+iOS Simulator, plus Zig for the statically linked arm64 Linux supervisor.
+Missing prerequisites are explicit build failures; scripts never install or
+substitute tools.

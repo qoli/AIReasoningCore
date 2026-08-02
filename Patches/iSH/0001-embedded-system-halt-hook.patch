@@ -1,0 +1,66 @@
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 47215dfc..a28cbb7c 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -14,7 +14,7 @@
+ #include "fs/fd.h"
+ #include "fs/tty.h"
+ 
+-static void halt_system(void);
++static void halt_system(int status);
+ 
+ // Weak default: overridden by main.c in CLI builds.
+ // In iOS/Xcode builds where main.c is not linked into libish.a,
+@@ -41,6 +41,7 @@ static bool exit_tgroup(struct task *task) {
+ }
+ 
+ void (*exit_hook)(struct task *task, int code) = NULL;
++ish_system_halt_hook_t system_halt_hook = NULL;
+ 
+ static struct task *find_new_parent(struct task *task) {
+     struct task *new_parent;
+@@ -170,7 +171,7 @@ noreturn void do_exit(int status) {
+ 
+         if (parent == NULL) {
+             // init died
+-            halt_system();
++            halt_system(status);
+         } else {
+             leader->zombie = true;
+             notify(&parent->group->child_exit);
+@@ -400,7 +401,7 @@ noreturn void do_exit_group(int status) {
+ }
+ 
+ // always called from init process
+-static void halt_system(void) {
++static void halt_system(int status) {
+     int max_iterations = 10; // Timeout: wait maximum 10 seconds
+     for (int state = 0; state < 3; state++) {
+         int tasks_found = 0;
+@@ -452,6 +453,14 @@ static void halt_system(void) {
+     extern void dump_wx_stats(void);
+     dump_wx_stats();
+ 
++    // An embedding host owns the outer process lifetime. Notify it and
++    // terminate only the kernel pthread. Ordinary iSH builds leave this
++    // hook NULL and retain the historical process-wide _exit below.
++    if (system_halt_hook != NULL) {
++        system_halt_hook(status);
++        pthread_exit(NULL);
++    }
++
+     // Force exit the entire host process. Orphaned guest threads
+     // (stuck in JIT loops after do_exit_group force cleanup) keep
+     // the host process alive indefinitely. _exit is safe here since
+diff --git a/kernel/task.h b/kernel/task.h
+index f950c6ca..251223ef 100644
+--- a/kernel/task.h
++++ b/kernel/task.h
+@@ -249,5 +249,7 @@ void task_run_current(void);
+ 
+ extern void (*exit_hook)(struct task *task, int code);
++typedef void (*ish_system_halt_hook_t)(int status);
++extern ish_system_halt_hook_t system_halt_hook;
+ 
+ typedef int (*ish_timer_tick_hook_t)(void);
+ void ish_set_timer_tick_hook(ish_timer_tick_hook_t hook);

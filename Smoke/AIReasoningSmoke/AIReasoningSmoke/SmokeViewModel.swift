@@ -101,7 +101,7 @@ final class SmokeViewModel: ObservableObject {
     private var authenticationTask: Task<Void, Never>?
 
     init(
-        processExecutor: any AgentProcessExecuting = ISHShellExecutorProcessExecutor()
+        processExecutor: any AgentProcessExecuting = ISHEmbeddedProcessExecutor()
     ) {
         self.processExecutor = processExecutor
     }
@@ -118,13 +118,16 @@ final class SmokeViewModel: ObservableObject {
         guard backend.requiresISH else {
             return "Native HTTP model. Configuration is validated when Run is pressed."
         }
-        switch ISHShellExecutorProcessExecutor().unavailableReason {
+        if let error = ISHHostBootstrap.registrationError ?? ISHHostBootstrap.bootError {
+            return "Unavailable: \(error)"
+        }
+        switch ISHEmbeddedProcessExecutor().unavailableReason {
         case nil:
             return "iSH interactive runtime is linked."
         case .runtimeNotLinked:
             return "Unavailable: iSH runtime is not linked to this app target."
-        case .incompatibleShellExecutorAPI:
-            return "Unavailable: linked iSH runtime has an incompatible shell API."
+        case .runtimeNotBooted:
+            return "Unavailable: iSH is linked but its writable rootfs has not been booted."
         }
     }
 

@@ -3,6 +3,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 . "$ROOT/Upstreams.env"
+PATCH="$ROOT/Patches/iSH/$(sed -n '1p' "$ROOT/Patches/iSH/series")"
 
 fail() {
     printf '%s\n' "AIReasoningCore upstream verification failed: $*" >&2
@@ -90,9 +91,9 @@ git -C "$TEMP_ROOT/iSH" checkout --quiet --detach "$ISH_COMMIT"
 
 apply_and_hash() {
     git -C "$TEMP_ROOT/iSH" apply --check --whitespace=error-all \
-        "$ROOT/Patches/iSH/0001-interactive-stdin.patch"
+        "$PATCH"
     git -C "$TEMP_ROOT/iSH" apply --whitespace=error-all \
-        "$ROOT/Patches/iSH/0001-interactive-stdin.patch"
+        "$PATCH"
     git -C "$TEMP_ROOT/iSH" diff --binary |
         shasum -a 256 |
         awk '{ print $1 }'

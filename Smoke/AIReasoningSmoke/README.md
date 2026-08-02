@@ -15,11 +15,20 @@ AnyLanguageModel-facing API:
 - inspect Codex CLI authentication, complete device-code or API-key login, and
   explicitly sign out inside the app-owned iSH root filesystem.
 
-The baseline app links `AIReasoningiSH`, which contains only the dynamic
-runtime bridge. It deliberately does not link the GPL iSH runtime. Therefore
-Codex and Claude display `runtimeNotLinked` until an integrating iOS app
-explicitly links the prepared OpenMinis iSH runtime and its exact selectors.
+The baseline app links `AIReasoningiSH`, but deliberately does not link the GPL
+iSH host XCFramework. Therefore Codex and Claude display `runtimeNotLinked`
+until an integrating iOS app explicitly links and registers the prepared
+OpenMinis host. A registered host without a booted writable fakefs reports
+`runtimeNotBooted`.
 There is no automatic switch to the native OpenAI model.
+
+The separate `AIReasoningiSHHostSmoke` scheme is the opt-in integration target.
+It links `Artifacts/AIReasoningiSHHost.xcframework`, embeds `Artifacts/ishsv`,
+and registers the host ABI. When an `iSHRootFS` directory and its verified
+manifest are present in the app bundle, it copies that immutable distribution
+to Application Support, boots iSH, and streams data through `/bin/cat` using the same
+`ISHEmbeddedProcessExecutor` used by Codex and Claude. The baseline scheme does
+not inherit any of those link settings.
 
 API keys are held in memory only. The smoke app does not read or write a
 configuration file, Keychain item, or `UserDefaults`.
@@ -80,6 +89,22 @@ The Xcode build is a separate strict gate. It fails when the selected Xcode
 does not have its matching iOS platform component installed; it does not
 silently replace the app build with the source typecheck.
 
+To run the actual embedded-kernel smoke, first prepare and build the pinned host,
+then supply an explicit fakefs archive. The archive is never committed or
+silently downloaded:
+
+```bash
+./Scripts/prepare-ish-integration.sh
+./Scripts/build-ish-host.sh Artifacts
+./Scripts/test-ish-host-smoke-simulator.sh \
+  --rootfs-archive /absolute/path/to/fs.tar.gz
+```
+
+The last command validates archive paths, computes the same deterministic
+directory digest used by `ISHRootFileSystemPreparer`, inspects the linked Mach-O
+for the host/kernel symbols, launches the arm64 simulator app, and requires a
+successful guest `/bin/cat` round trip from the app container.
+
 The non-interactive script passes Xcode's `-skipMacroValidation` flag for the
 AnyLanguageModel `@Generable` macro. This is bounded by the repository's exact
 0.9.0/full-SHA pin and `verify-upstreams.sh`. When opening the project
@@ -94,10 +119,8 @@ To exercise the native baseline on a device or simulator:
    and prompt.
 5. Select one-shot, stream, or structured mode and press Run.
 
-Before producing an iSH-linked variant, run
-`Scripts/prepare-ish-integration.sh` and follow `Docs/ISH-COMPLIANCE.md`.
-The pinned OpenMinis Xcode project builds `libiSHApp.a`, but does not include
-`app/ISHShellExecutor.m` in that library target. An integrating app must add the
-approved executor `.m` file to its own iSH-linked target and initialize the iSH
-`AppDelegate` boot/rootfs lifecycle before `AIReasoningiSH` can discover the
-runtime selectors. Merely linking `libiSHApp.a` is not a runnable integration.
+For a downstream app, follow `Docs/ISH-COMPLIANCE.md`: add the generated
+XCFramework and `ishsv` only to an opt-in target, register
+`ARISHOpenMinisHostRuntimeV1()`, prepare a verified writable fakefs with
+`ISHRootFileSystemPreparer`, and boot `ISHEmbeddedRuntime.shared`. Merely
+linking the XCFramework does not boot iSH.

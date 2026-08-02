@@ -92,7 +92,7 @@ struct SmokeConfiguration {
     let timeoutSeconds: Double
 
     func makeLanguageModel(
-        executor: any AgentProcessExecuting = ISHShellExecutorProcessExecutor()
+        executor: any AgentProcessExecuting = ISHEmbeddedProcessExecutor()
     ) throws -> any LanguageModel {
         let model = try required(model, named: "model")
         guard timeoutSeconds.isFinite, timeoutSeconds > 0 else {
@@ -109,7 +109,7 @@ struct SmokeConfiguration {
                 workingDirectoryPath,
                 named: "guest working directory"
             )
-            if let ishExecutor = executor as? ISHShellExecutorProcessExecutor,
+            if let ishExecutor = executor as? ISHEmbeddedProcessExecutor,
                let unavailableReason = ishExecutor.unavailableReason
             {
                 throw SmokeConfigurationError.iSHUnavailable(unavailableReason)
@@ -162,7 +162,7 @@ struct SmokeConfiguration {
     }
 
     func makeCodexAuthenticationManager(
-        executor: any AgentProcessExecuting = ISHShellExecutorProcessExecutor()
+        executor: any AgentProcessExecuting = ISHEmbeddedProcessExecutor()
     ) throws -> CodexCLIAuthenticationManager {
         guard backend == .codex else {
             throw SmokeConfigurationError.codexAuthenticationUnsupportedBackend
@@ -178,7 +178,7 @@ struct SmokeConfiguration {
             workingDirectoryPath,
             named: "guest working directory"
         )
-        if let ishExecutor = executor as? ISHShellExecutorProcessExecutor,
+        if let ishExecutor = executor as? ISHEmbeddedProcessExecutor,
            let unavailableReason = ishExecutor.unavailableReason
         {
             throw SmokeConfigurationError.iSHUnavailable(unavailableReason)
@@ -278,8 +278,8 @@ enum SmokeConfigurationError: Error, LocalizedError, Equatable {
             "Reasoning effort is only supported by the native OpenAI-compatible backend."
         case .iSHUnavailable(.runtimeNotLinked):
             "iSH runtime is not linked. Codex and Claude cannot run in this build."
-        case .iSHUnavailable(.incompatibleShellExecutorAPI):
-            "The linked iSH runtime does not expose the required interactive shell API."
+        case .iSHUnavailable(.runtimeNotBooted):
+            "The linked iSH runtime has not booted a writable root filesystem."
         }
     }
 }
