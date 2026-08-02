@@ -2,6 +2,7 @@
 .swiftpm/
 .DS_Store
 *.xcodeproj
+!Smoke/AIReasoningSmoke/AIReasoningSmoke.xcodeproj/
 xcuserdata/
 DerivedData/
 response.out

@@ -11,13 +11,15 @@ asymmetric.
 
 ## AnyLanguageModel update
 
-1. Change the exact version in `Package.swift` and its version/full tag SHA in
-   `Upstreams.env`.
-2. Resolve packages from the official
+1. Change the exact version in `Package.swift`, the iOS smoke Xcode project,
+   and its version/full tag SHA in `Upstreams.env`.
+2. Resolve both root and smoke-project package graphs from the official
    `https://github.com/huggingface/AnyLanguageModel.git` remote.
-3. Run all text-stream, image, transcript and `@Generable` tests.
-4. Run the CLI golden tests and linkage verifier.
-5. Keep no local patch, fork URL or submodule for this dependency.
+3. Commit both `Package.resolved` files with the verified full tag SHA.
+4. Run all text-stream, image, transcript and `@Generable` tests, including
+   `typecheck-ios-smoke.sh`.
+5. Run the CLI golden tests and linkage verifier.
+6. Keep no local patch, fork URL or submodule for this dependency.
 
 An API migration is not complete if any required model behavior is silently
 discarded.

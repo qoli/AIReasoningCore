@@ -87,6 +87,32 @@ explicitly for these two backends. `stream + tools`,
 fail explicitly. No backend, model, modality or execution-mode fallback is
 performed.
 
+## iOS smoke app
+
+[`AIReasoningSmoke`](Smoke/AIReasoningSmoke) is an iOS 17 SwiftUI project that
+uses this repository as a local Swift package. It exercises explicit
+Codex/Claude/AnyLanguageModel selection, configuration validation, one-shot
+text, true text stream, `@Generable` structured output, Photos input and
+cancellation.
+
+```bash
+./Scripts/typecheck-ios-smoke.sh
+./Scripts/test-ios-smoke.sh
+./Scripts/test-ios-smoke-simulator.sh
+```
+
+The baseline target links the `AIReasoningiSH` dynamic bridge but not the GPL
+iSH runtime. Codex and Claude therefore display typed `runtimeNotLinked` until
+an integrating app explicitly links the prepared runtime. The app never
+switches to another backend when the selected backend is unavailable.
+
+For an iSH-linked app, Codex login must be completed inside that app's own iSH
+root filesystem; a login in the standalone iSH app is stored in a different
+container and is not shared. The smoke controller supports `codex login
+status`, device-code login, API-key login over stdin, verified logout, and a
+mandatory authentication preflight before Codex generation. See the
+[Smoke authentication workflow](Smoke/AIReasoningSmoke/README.md#codex-authentication-in-an-ish-linked-app).
+
 ## Upstream isolation
 
 `AnyLanguageModel` is a normal official SwiftPM dependency with no patches or
@@ -111,6 +137,8 @@ iSH-linked app.
 ```bash
 swift test
 ./Scripts/test-cli-sigint.sh
+./Scripts/typecheck-ios-smoke.sh
+./Scripts/test-ios-smoke.sh
 ./Scripts/verify-upstreams.sh
 ./Scripts/verify-no-ish-linkage.sh
 ```

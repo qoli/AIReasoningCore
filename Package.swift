@@ -43,6 +43,23 @@ let package = Package(
             ]
         ),
         .target(
+            name: "AIReasoningSmokeSupport",
+            dependencies: [
+                "AIReasoningCore",
+                "AIReasoningiSH",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
+            ],
+            path: "Smoke/AIReasoningSmoke/AIReasoningSmoke",
+            exclude: [
+                "AIReasoningSmokeApp.swift",
+                "ContentView.swift",
+            ],
+            sources: [
+                "SmokeConfiguration.swift",
+                "SmokeViewModel.swift",
+            ]
+        ),
+        .target(
             name: "AIReasoningiSHTestSupport",
             path: "Tests/AIReasoningiSHTestSupport",
             publicHeadersPath: "include"
@@ -80,6 +97,13 @@ let package = Package(
             dependencies: [
                 "AIReasoningiSH",
                 "AIReasoningiSHTestSupport",
+            ]
+        ),
+        .testTarget(
+            name: "AIReasoningSmokeTests",
+            dependencies: [
+                "AIReasoningSmokeSupport",
+                .product(name: "AnyLanguageModel", package: "AnyLanguageModel"),
             ]
         ),
     ]

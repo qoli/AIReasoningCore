@@ -23,6 +23,13 @@ validate_commit MacPaw/OpenAI "$MACPAW_OPENAI_COMMIT"
 grep -Fq "exact: \"$ANYLANGUAGEMODEL_VERSION\"" "$ROOT/Package.swift" ||
     fail "Package.swift does not exact-pin AnyLanguageModel $ANYLANGUAGEMODEL_VERSION"
 
+SMOKE_PROJECT="$ROOT/Smoke/AIReasoningSmoke/AIReasoningSmoke.xcodeproj/project.pbxproj"
+SMOKE_RESOLVED="$ROOT/Smoke/AIReasoningSmoke/AIReasoningSmoke.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+grep -Fq "version = $ANYLANGUAGEMODEL_VERSION;" "$SMOKE_PROJECT" ||
+    fail "iOS smoke project does not exact-pin AnyLanguageModel $ANYLANGUAGEMODEL_VERSION"
+grep -Fq "\"revision\" : \"$ANYLANGUAGEMODEL_COMMIT\"" "$SMOKE_RESOLVED" ||
+    fail "iOS smoke Package.resolved does not pin AnyLanguageModel $ANYLANGUAGEMODEL_COMMIT"
+
 resolve_tag() {
     git ls-remote "$1" "refs/tags/$2" "refs/tags/$2^{}" |
         awk '

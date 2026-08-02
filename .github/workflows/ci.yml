@@ -13,5 +13,7 @@ jobs:
           submodules: false
       - run: swift test
       - run: ./Scripts/test-cli-sigint.sh
+      - run: ./Scripts/typecheck-ios-smoke.sh
+      - run: ./Scripts/test-ios-smoke.sh
       - run: ./Scripts/verify-upstreams.sh
       - run: ./Scripts/verify-no-ish-linkage.sh
