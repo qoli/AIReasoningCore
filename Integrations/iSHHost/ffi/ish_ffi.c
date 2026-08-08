@@ -164,6 +164,7 @@ int ish_ffi_chdir(const char *guest_path) {
  * ------------------------------------------------------------------ */
 
 extern const struct fs_ops devptsfs;
+extern const struct fs_ops procfs;
 extern int do_mount(const struct fs_ops *fs, const char *source,
                     const char *point, const char *info, int flags);
 
@@ -220,7 +221,15 @@ static int create_devices_under(const char *prefix) {
 }
 
 int ish_ffi_create_devices(void) {
-    return create_devices_under("");
+    int err = create_devices_under("");
+    if (err < 0) return err;
+
+    /* Match the OpenMinis host boot sequence: Linux programs resolve their
+     * own executable through /proc/self/exe.  The embedding runtime owns this
+     * mount because procfs is kernel state, not rootfs content, and therefore
+     * must not require a patch to the pinned iSH upstream. */
+    generic_mkdirat(AT_PWD, "/proc", 0555);
+    return do_mount(&procfs, "proc", "/proc", "", 0);
 }
 
 /* ------------------------------------------------------------------ *

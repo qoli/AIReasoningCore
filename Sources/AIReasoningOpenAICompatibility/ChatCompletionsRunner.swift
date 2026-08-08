@@ -27,8 +27,11 @@ public struct ChatCompletionsRunner: Sendable {
                         try await emit(data)
                     }
                 )
-            case .codex, .claude:
-                try validateAgentParameters(request)
+            case .codex, .claude, .opencode:
+                try validateAgentParameters(
+                    request,
+                    backend: configuration.backend
+                )
                 try await runAgent(
                     request,
                     configuration: configuration,
@@ -180,6 +183,22 @@ public struct ChatCompletionsRunner: Sendable {
                 images: request.images,
                 outputSchema: request.outputSchema
             )
+        case .opencode:
+            let model = OpenCodeLanguageModel(
+                configuration: .init(
+                    executableURL: executableURL,
+                    model: request.model,
+                    workingDirectoryURL: configuration.workingDirectoryURL,
+                    environment: configuration.environment,
+                    timeout: timeout,
+                    provider: configuration.openCodeProvider
+                )
+            )
+            stream = try await model.rawStream(
+                transcriptText: request.transcriptText,
+                images: request.images,
+                outputSchema: request.outputSchema
+            )
         case .openai:
             throw ChatCompletionsFailure(
                 .backend,
@@ -269,12 +288,22 @@ public struct ChatCompletionsRunner: Sendable {
     }
 
     private func validateAgentParameters(
-        _ request: PreparedChatCompletionsRequest
+        _ request: PreparedChatCompletionsRequest,
+        backend: ChatCompletionsBackend
     ) throws {
+        if backend == .opencode, request.outputSchema != nil {
+            let parameter = request.usesToolEnvelope ? "tools" : "response_format"
+            throw ChatCompletionsFailure(
+                .invalidRequest,
+                message: "\(parameter) cannot be losslessly mapped by OpenCode ACP v1",
+                parameter: parameter,
+                code: "unsupported_parameter"
+            )
+        }
         if request.temperature != nil {
             throw ChatCompletionsFailure(
                 .invalidRequest,
-                message: "temperature cannot be losslessly mapped by codex or claude",
+                message: "temperature cannot be losslessly mapped by agent backends",
                 parameter: "temperature",
                 code: "unsupported_parameter"
             )
@@ -282,7 +311,7 @@ public struct ChatCompletionsRunner: Sendable {
         if request.topP != nil {
             throw ChatCompletionsFailure(
                 .invalidRequest,
-                message: "top_p cannot be losslessly mapped by codex or claude",
+                message: "top_p cannot be losslessly mapped by agent backends",
                 parameter: "top_p",
                 code: "unsupported_parameter"
             )
@@ -290,7 +319,7 @@ public struct ChatCompletionsRunner: Sendable {
         if request.maximumTokens != nil {
             throw ChatCompletionsFailure(
                 .invalidRequest,
-                message: "token limits cannot be losslessly mapped by codex or claude",
+                message: "token limits cannot be losslessly mapped by agent backends",
                 parameter: "max_completion_tokens",
                 code: "unsupported_parameter"
             )

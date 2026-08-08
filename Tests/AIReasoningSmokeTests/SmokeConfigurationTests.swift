@@ -47,6 +47,63 @@ struct SmokeConfigurationTests {
     }
 
     @Test
+    func openCodeUsesTheExplicitISHGuestConfiguration() throws {
+        let configuration = SmokeConfiguration(
+            backend: .openCode,
+            model: "opencode/deepseek-v4-flash-free",
+            executablePath: "/usr/local/bin/opencode",
+            workingDirectoryPath: "/root",
+            baseURL: "",
+            apiKey: "",
+            maximumResponseTokens: 2048,
+            timeoutSeconds: 120
+        )
+
+        let model = try configuration.makeLanguageModel(
+            executor: SmokeFixtureExecutor(events: [])
+        )
+
+        #expect(model is OpenCodeLanguageModel)
+        #expect(try configuration.makeGenerationOptions() == GenerationOptions())
+    }
+
+    @Test
+    func openCodeUsesExplicitOpenAICompatibleProviderConfiguration() throws {
+        let configuration = SmokeConfiguration(
+            backend: .openCode,
+            model: "deepseek/deepseek-v4-flash",
+            executablePath: "/usr/local/bin/opencode",
+            workingDirectoryPath: "/root",
+            baseURL: "https://api.deepseek.com/v1",
+            apiKey: "fixture-key",
+            maximumResponseTokens: 2048,
+            timeoutSeconds: 120
+        )
+
+        #expect(
+            try configuration.makeLanguageModel(executor: SmokeFixtureExecutor(events: []))
+                is OpenCodeLanguageModel)
+    }
+
+    @Test
+    func openCodeProviderMissingKeyFailsExplicitly() {
+        let configuration = SmokeConfiguration(
+            backend: .openCode,
+            model: "deepseek/deepseek-v4-flash",
+            executablePath: "/usr/local/bin/opencode",
+            workingDirectoryPath: "/root",
+            baseURL: "https://api.deepseek.com/v1",
+            apiKey: "",
+            maximumResponseTokens: 2048,
+            timeoutSeconds: 120
+        )
+
+        #expect(throws: SmokeConfigurationError.missingRequiredValue("API key")) {
+            _ = try configuration.makeLanguageModel(executor: SmokeFixtureExecutor(events: []))
+        }
+    }
+
+    @Test
     func nativeOpenAIMissingKeyDoesNotContinue() {
         let configuration = SmokeConfiguration(
             backend: .anyLanguageModelOpenAI,

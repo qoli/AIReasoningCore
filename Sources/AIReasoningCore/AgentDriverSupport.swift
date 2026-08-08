@@ -55,7 +55,7 @@ package enum AgentDriverSupport {
             arguments: versionArguments,
             environment: configuration.environment,
             workingDirectoryURL: configuration.workingDirectoryURL,
-            timeout: .seconds(15)
+            timeout: configuration.timeout
         )
         let session = try await executor.start(request)
         try await session.closeStandardInput()

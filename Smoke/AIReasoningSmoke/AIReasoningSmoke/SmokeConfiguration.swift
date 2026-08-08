@@ -6,6 +6,7 @@ import Foundation
 enum SmokeBackend: String, CaseIterable, Identifiable {
     case codex
     case claude
+    case openCode
     case anyLanguageModelOpenAI
 
     var id: Self { self }
@@ -16,6 +17,8 @@ enum SmokeBackend: String, CaseIterable, Identifiable {
             "Codex CLI (iSH)"
         case .claude:
             "Claude CLI (iSH)"
+        case .openCode:
+            "OpenCode (iSH)"
         case .anyLanguageModelOpenAI:
             "AnyLanguageModel / OpenAI"
         }
@@ -23,7 +26,7 @@ enum SmokeBackend: String, CaseIterable, Identifiable {
 
     var requiresISH: Bool {
         switch self {
-        case .codex, .claude:
+        case .codex, .claude, .openCode:
             true
         case .anyLanguageModelOpenAI:
             false
@@ -100,7 +103,7 @@ struct SmokeConfiguration {
         }
 
         switch backend {
-        case .codex, .claude:
+        case .codex, .claude, .openCode:
             let executablePath = try absolutePath(
                 executablePath,
                 named: "guest executable path"
@@ -142,6 +145,37 @@ struct SmokeConfiguration {
                         model: common.model,
                         workingDirectoryURL: common.workingDirectoryURL,
                         timeout: common.timeout
+                    ),
+                    executor: executor
+                )
+            case .openCode:
+                let provider: OpenCodeLanguageModel.ProviderConfiguration?
+                var environment: [String: String] = [:]
+                if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                {
+                    provider = nil
+                } else {
+                    let apiKey = try required(apiKey, named: "API key")
+                    let baseURL = try httpURL(baseURL)
+                    guard let separator = model.firstIndex(of: "/"), separator != model.startIndex else {
+                        throw SmokeConfigurationError.openCodeProviderModelRequired
+                    }
+                    let providerID = String(model[..<separator])
+                    let environmentVariable = "AIREASONING_OPENCODE_API_KEY"
+                    environment[environmentVariable] = apiKey
+                    provider = .init(
+                        id: providerID, baseURL: baseURL,
+                        apiKeyEnvironmentVariable: environmentVariable)
+                }
+                return OpenCodeLanguageModel(
+                    configuration: .init(
+                        executableURL: common.executableURL,
+                        model: common.model,
+                        workingDirectoryURL: common.workingDirectoryURL,
+                        environment: environment,
+                        timeout: common.timeout,
+                        provider: provider
                     ),
                     executor: executor
                 )
@@ -197,6 +231,12 @@ struct SmokeConfiguration {
     }
 
     func makeGenerationOptions() throws -> GenerationOptions {
+        if backend != .anyLanguageModelOpenAI {
+            guard reasoningEffort == .providerDefault else {
+                throw SmokeConfigurationError.reasoningEffortUnsupported
+            }
+            return GenerationOptions()
+        }
         guard maximumResponseTokens > 0 else {
             throw SmokeConfigurationError.invalidMaximumResponseTokens
         }
@@ -205,9 +245,6 @@ struct SmokeConfiguration {
         )
         guard let apiValue = reasoningEffort.apiValue else {
             return options
-        }
-        guard backend == .anyLanguageModelOpenAI else {
-            throw SmokeConfigurationError.reasoningEffortUnsupported
         }
         options[custom: OpenAILanguageModel.self] = .init(
             extraBody: [
@@ -256,6 +293,7 @@ enum SmokeConfigurationError: Error, LocalizedError, Equatable {
     case invalidBackendState
     case codexAuthenticationUnsupportedBackend
     case reasoningEffortUnsupported
+    case openCodeProviderModelRequired
     case iSHUnavailable(ISHProcessExecutorUnavailableReason)
 
     var errorDescription: String? {
@@ -276,8 +314,10 @@ enum SmokeConfigurationError: Error, LocalizedError, Equatable {
             "Codex CLI authentication is only available for the Codex backend."
         case .reasoningEffortUnsupported:
             "Reasoning effort is only supported by the native OpenAI-compatible backend."
+        case .openCodeProviderModelRequired:
+            "OpenCode custom provider models must use provider/model format."
         case .iSHUnavailable(.runtimeNotLinked):
-            "iSH runtime is not linked. Codex and Claude cannot run in this build."
+            "iSH runtime is not linked. Codex, Claude, and OpenCode cannot run in this build."
         case .iSHUnavailable(.runtimeNotBooted):
             "The linked iSH runtime has not booted a writable root filesystem."
         }

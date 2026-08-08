@@ -3,7 +3,7 @@
 `AIReasoningSmoke` is an iOS 17 SwiftUI app that exercises the public
 AnyLanguageModel-facing API:
 
-- select Codex CLI, Claude CLI, or AnyLanguageModel's native OpenAI model;
+- select Codex CLI, Claude CLI, OpenCode, or AnyLanguageModel's native OpenAI model;
 - configure the selected execution path explicitly;
 - select provider-default, high, or max reasoning effort for OpenAI-compatible
   models; high/max explicitly enable thinking through vendor `extraBody`;
@@ -16,11 +16,40 @@ AnyLanguageModel-facing API:
   explicitly sign out inside the app-owned iSH root filesystem.
 
 The baseline app links `AIReasoningiSH`, but deliberately does not link the GPL
-iSH host XCFramework. Therefore Codex and Claude display `runtimeNotLinked`
+iSH host XCFramework. Therefore Codex, Claude, and OpenCode display `runtimeNotLinked`
 until an integrating iOS app explicitly links and registers the prepared
 OpenMinis host. A registered host without a booted writable fakefs reports
 `runtimeNotBooted`.
 There is no automatic switch to the native OpenAI model.
+
+## OpenCode in an iSH-linked app
+
+Select `OpenCode (iSH)`, use `/usr/local/bin/opencode`, and provide an explicit
+OpenCode model ID. The Core driver starts `opencode acp --pure`, selects the
+model with process-scoped `OPENCODE_CONFIG_CONTENT`, disables autoupdate,
+formatter and LSP, and denies every tool permission. It emits only real ACP
+`agent_message_chunk` text deltas. OpenCode is an independent backend and is
+never used as a fallback.
+
+The Smoke UI also accepts a provider base URL and an in-memory API key. For
+example, use `deepseek/deepseek-v4-flash` with
+`https://api.deepseek.com/v1`. Core creates an explicit OpenAI-compatible
+provider configuration and exposes the credential only to that OpenCode child
+process. A missing key, malformed URL, or model without the matching
+`provider/` prefix fails before generation; the app does not switch to an
+OpenCode-hosted free model.
+
+The official ARM64 musl distribution requires the guest paths
+`/lib/ld-musl-aarch64.so.1`, `/usr/lib/libstdc++.so.6`, and
+`/usr/lib/libgcc_s.so.1`. The executable and these runtime libraries belong in
+the consumer-owned fakefs; they are not linked into the iOS app binary or
+committed to this repository. Provider credentials likewise belong to that
+app-owned guest environment (OpenCode's auth store or explicit provider
+environment variables). A standalone iSH app's auth store is not shared.
+
+OpenCode ACP v1 supports text and image input but has no lossless structured
+schema field. The Smoke app therefore reports a typed unsupported error for
+OpenCode structured mode; it does not convert the request to prompt-only JSON.
 
 The separate `AIReasoningiSHHostSmoke` scheme is the opt-in integration target.
 It links `Artifacts/AIReasoningiSHHost.xcframework`, embeds `Artifacts/ishsv`,

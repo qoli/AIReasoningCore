@@ -5,6 +5,7 @@ public enum ChatCompletionsBackend: String, Sendable {
     case openai
     case codex
     case claude
+    case opencode
 }
 
 public struct ChatCompletionsExecutionConfiguration: Sendable {
@@ -14,6 +15,7 @@ public struct ChatCompletionsExecutionConfiguration: Sendable {
     public let workingDirectoryURL: URL
     public let timeoutSeconds: Double
     public let environment: [String: String]
+    public let openCodeProvider: OpenCodeLanguageModel.ProviderConfiguration?
 
     public init(
         backend: ChatCompletionsBackend,
@@ -21,7 +23,8 @@ public struct ChatCompletionsExecutionConfiguration: Sendable {
         baseURL: URL?,
         workingDirectoryURL: URL,
         timeoutSeconds: Double,
-        environment: [String: String]
+        environment: [String: String],
+        openCodeProvider: OpenCodeLanguageModel.ProviderConfiguration? = nil
     ) {
         self.backend = backend
         self.executableURL = executableURL
@@ -29,6 +32,7 @@ public struct ChatCompletionsExecutionConfiguration: Sendable {
         self.workingDirectoryURL = workingDirectoryURL
         self.timeoutSeconds = timeoutSeconds
         self.environment = environment
+        self.openCodeProvider = openCodeProvider
     }
 }
 

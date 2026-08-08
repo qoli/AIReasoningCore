@@ -8,6 +8,7 @@ asymmetric.
 | AnyLanguageModel | official SwiftPM URL, exact version, no patch | 0.9.0 / `f22b78e6b10f67e7d46c67dc59a8a35bc259fbce` |
 | MacPaw/OpenAI | CLI compatibility target only, exact version | 0.5.1 / `a532be89be9a30ec003e4ba0974a52a88d26fc6d` |
 | OpenMinis ish-arm64 | opt-in `update=none` submodule | `de124dd66124a15239cea1465164f74980ada245` |
+| OpenCode | external CLI; official ARM64 musl release in consumer fakefs | 1.18.15 / release asset SHA-256 in `Upstreams.env` |
 
 ## AnyLanguageModel update
 
@@ -46,6 +47,24 @@ The OpenMinis fork remains responsible for its own relationship to
 
 Do not commit inside `Upstreams/iSH`. If a candidate fails, retain the previous
 pin.
+
+## OpenCode update
+
+OpenCode is not a SwiftPM dependency, submodule, or linked app component. Core
+speaks ACP stdio to an executable supplied by the consumer. The iSH smoke uses
+the official `opencode-linux-arm64-musl.tar.gz` asset and records its SHA-256 in
+`Upstreams.env`; the binary is never committed.
+
+1. Verify the official release asset and update the minimum version plus full
+   SHA-256 together.
+2. Re-run the ACP delta, image, cancellation, malformed-wire and explicit
+   structured-output rejection tests.
+3. For iSH, package the pinned Alpine ARM64 `libgcc` and `libstdc++` runtime
+   files recorded in `Upstreams.env`; do not substitute host libraries.
+4. Run `/usr/local/bin/opencode --version` and a real ACP generation inside the
+   app-owned iSH rootfs. Keep the previous pins if either fails.
+5. Never add an OpenCode-to-Codex/Claude fallback or silently replace ACP with
+   the completed-part `run --format json` output.
 
 ## Local build prerequisites
 

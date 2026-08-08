@@ -121,7 +121,7 @@ struct ContentView: View {
 
             if viewModel.backend.requiresISH {
                 TextField(
-                    "Guest executable, e.g. /usr/bin/codex",
+                    "Guest executable, e.g. /usr/local/bin/opencode",
                     text: $viewModel.executablePath
                 )
                 .textInputAutocapitalization(.never)
@@ -133,9 +133,11 @@ struct ContentView: View {
                 )
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            } else {
+            }
+
+            if viewModel.backend == .openCode || !viewModel.backend.requiresISH {
                 TextField(
-                    "Base URL, e.g. https://api.openai.com/v1/",
+                    "Base URL, e.g. https://api.deepseek.com/v1",
                     text: $viewModel.baseURL
                 )
                 .textInputAutocapitalization(.never)
@@ -146,21 +148,23 @@ struct ContentView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                Picker("Reasoning effort", selection: $viewModel.reasoningEffort) {
-                    ForEach(SmokeReasoningEffort.allCases) { effort in
-                        Text(effort.title).tag(effort)
+                if !viewModel.backend.requiresISH {
+                    Picker("Reasoning effort", selection: $viewModel.reasoningEffort) {
+                        ForEach(SmokeReasoningEffort.allCases) { effort in
+                            Text(effort.title).tag(effort)
+                        }
                     }
-                }
-                Text("High and Max explicitly enable provider thinking mode.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text("High and Max explicitly enable provider thinking mode.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                TextField(
-                    "Maximum response tokens",
-                    value: $viewModel.maximumResponseTokens,
-                    format: .number
-                )
-                .keyboardType(.numberPad)
+                    TextField(
+                        "Maximum response tokens",
+                        value: $viewModel.maximumResponseTokens,
+                        format: .number
+                    )
+                    .keyboardType(.numberPad)
+                }
             }
 
             TextField(

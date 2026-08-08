@@ -177,6 +177,20 @@ final class SmokeViewModel: ObservableObject {
         codexLoginCredential = ""
         codexAuthenticationOutput = ""
         codexAuthenticationState = .unchecked
+        if backend == .openCode {
+            if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                model = "deepseek/deepseek-v4-flash"
+            }
+            if executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                executablePath = "/usr/local/bin/opencode"
+            }
+            if workingDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                workingDirectoryPath = "/root"
+            }
+            if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                baseURL = "https://api.deepseek.com/v1"
+            }
+        }
     }
 
     func refreshCodexAuthentication() {

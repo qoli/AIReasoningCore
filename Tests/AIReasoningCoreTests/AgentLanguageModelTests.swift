@@ -98,6 +98,125 @@ struct AgentLanguageModelTests {
     }
 
     @Test
+    func openCodeProducesTrueACPTextStreamAndDisablesCapabilities() async throws {
+        let generation = try MockAgentProcessSession.fixture("opencode-text")
+        let executor = MockAgentProcessExecutor(
+            sessions: [
+                .lines([
+                    .standardOutputLine("1.18.15"),
+                    .terminated(exitCode: 0),
+                ]),
+                generation,
+            ]
+        )
+        let model = OpenCodeLanguageModel(
+            configuration: .init(
+                executableURL: URL(fileURLWithPath: "/fixture/opencode"),
+                model: "deepseek/deepseek-v4-flash",
+                workingDirectoryURL: URL(fileURLWithPath: "/root"),
+                environment: ["DEEPSEEK_API_KEY": "fixture-key"],
+                provider: .init(
+                    id: "deepseek", baseURL: URL(string: "https://api.deepseek.com/v1")!,
+                    apiKeyEnvironmentVariable: "DEEPSEEK_API_KEY")
+            ),
+            executor: executor
+        )
+
+        var snapshots: [String] = []
+        for try await snapshot in LanguageModelSession(model: model)
+            .streamResponse(
+                to: "Hello",
+                images: [
+                    Transcript.ImageSegment(
+                        data: validPNG,
+                        mimeType: "image/png"
+                    )
+                ]
+            )
+        {
+            snapshots.append(snapshot.content)
+        }
+
+        #expect(snapshots == ["Hello", "Hello world"])
+        let request = try #require(executor.request(at: 1))
+        #expect(request.arguments == ["acp", "--pure", "--cwd", "/root"])
+        let configText = try #require(request.environment["OPENCODE_CONFIG_CONTENT"])
+        let config = try #require(
+            JSONSerialization.jsonObject(with: Data(configText.utf8)) as? [String: Any]
+        )
+        #expect(config["model"] as? String == "deepseek/deepseek-v4-flash")
+        #expect(config["autoupdate"] as? Bool == false)
+        #expect((config["permission"] as? [String: String])?["*"] == "deny")
+        #expect(config["enabled_providers"] as? [String] == ["deepseek"])
+        let providers = try #require(config["provider"] as? [String: Any])
+        let deepSeek = try #require(providers["deepseek"] as? [String: Any])
+        let options = try #require(deepSeek["options"] as? [String: String])
+        #expect(options["baseURL"] == "https://api.deepseek.com/v1")
+        #expect(options["apiKey"] == "{env:DEEPSEEK_API_KEY}")
+
+        let writes = generation.writtenData.compactMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }
+        #expect(writes.compactMap { $0["method"] as? String } == [
+            "initialize", "session/new", "session/prompt",
+        ])
+        let promptParams = try #require(writes.last?["params"] as? [String: Any])
+        let prompt = try #require(promptParams["prompt"] as? [[String: Any]])
+        #expect(prompt.compactMap { $0["type"] as? String } == ["text", "image"])
+        #expect(prompt.last?["mimeType"] as? String == "image/png")
+        #expect(prompt.last?["data"] as? String == validPNG.base64EncodedString())
+    }
+
+    @Test
+    func openCodeCustomProviderMissingKeyFailsBeforeStartingProcess() async {
+        let executor = MockAgentProcessExecutor(sessions: [])
+        let model = OpenCodeLanguageModel(
+            configuration: .init(
+                executableURL: URL(fileURLWithPath: "/fixture/opencode"),
+                model: "deepseek/deepseek-v4-flash",
+                workingDirectoryURL: URL(fileURLWithPath: "/root"),
+                provider: .init(
+                    id: "deepseek", baseURL: URL(string: "https://api.deepseek.com/v1")!,
+                    apiKeyEnvironmentVariable: "DEEPSEEK_API_KEY")
+            ),
+            executor: executor
+        )
+
+        await #expect(
+            throws: AgentLanguageModelError.protocolFailure(
+                driver: "opencode", message: "missing provider API key environment variable")
+        ) {
+            _ = try await LanguageModelSession(model: model).respond(to: "Hello")
+        }
+        #expect(executor.startedRequestCount == 0)
+    }
+
+    @Test
+    func openCodeStructuredOutputFailsBeforeStartingProcess() async {
+        let executor = MockAgentProcessExecutor(sessions: [])
+        let model = OpenCodeLanguageModel(
+            configuration: .init(
+                executableURL: URL(fileURLWithPath: "/fixture/opencode"),
+                model: "fixture-model",
+                workingDirectoryURL: URL(fileURLWithPath: "/root")
+            ),
+            executor: executor
+        )
+
+        await #expect(
+            throws: AgentLanguageModelError.unsupportedStructuredOutput(
+                driver: "opencode"
+            )
+        ) {
+            _ = try await LanguageModelSession(model: model).respond(
+                to: "Return JSON",
+                generating: StructuredGreeting.self
+            )
+        }
+        #expect(executor.startedRequestCount == 0)
+    }
+
+    @Test
     func claudeProducesGenerableStructuredOutput() async throws {
         let executor = MockAgentProcessExecutor(
             sessions: [

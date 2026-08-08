@@ -1,3 +1,4 @@
+import AIReasoningCore
 import AIReasoningOpenAICompatibility
 import Darwin
 import Foundation
@@ -18,7 +19,8 @@ enum AIReasoningCLI {
                 baseURL: options.baseURL,
                 workingDirectoryURL: options.workingDirectoryURL,
                 timeoutSeconds: options.timeoutSeconds,
-                environment: ProcessInfo.processInfo.environment
+                environment: ProcessInfo.processInfo.environment,
+                openCodeProvider: try options.openCodeProviderConfiguration()
             )
             let runTask = Task {
                 await ChatCompletionsRunner().run(
@@ -102,6 +104,8 @@ private struct CLIOptions {
     let baseURL: URL?
     let workingDirectoryURL: URL
     let timeoutSeconds: Double
+    let providerID: String?
+    let apiKeyEnvironmentVariable: String?
 
     static func parse(_ arguments: [String]) throws -> CLIOptions {
         guard arguments.first == "chat" else {
@@ -123,6 +127,7 @@ private struct CLIOptions {
         let known: Set<String> = [
             "--backend", "--input", "--output", "--executable",
             "--base-url", "--cwd", "--timeout-seconds",
+            "--provider-id", "--api-key-env",
         ]
         if let unknown = Set(values.keys).subtracting(known).sorted().first {
             throw CLIError.usage("Unknown flag: \(unknown)")
@@ -130,7 +135,7 @@ private struct CLIOptions {
         guard let backendValue = values["--backend"],
               let backend = ChatCompletionsBackend(rawValue: backendValue)
         else {
-            throw CLIError.usage("--backend openai|codex|claude is required")
+            throw CLIError.usage("--backend openai|codex|claude|opencode is required")
         }
         guard let inputPath = values["--input"], !inputPath.isEmpty else {
             throw CLIError.usage("--input request.json is required")
@@ -161,8 +166,29 @@ private struct CLIOptions {
             executablePath: values["--executable"],
             baseURL: baseURL,
             workingDirectoryURL: URL(fileURLWithPath: cwdPath, isDirectory: true),
-            timeoutSeconds: timeout
+            timeoutSeconds: timeout,
+            providerID: values["--provider-id"],
+            apiKeyEnvironmentVariable: values["--api-key-env"]
         )
+    }
+
+    func openCodeProviderConfiguration() throws -> OpenCodeLanguageModel.ProviderConfiguration? {
+        let values = [baseURL != nil, providerID != nil, apiKeyEnvironmentVariable != nil]
+        guard values.contains(true) else { return nil }
+        guard backend == .opencode else {
+            if backend == .openai, providerID == nil, apiKeyEnvironmentVariable == nil { return nil }
+            throw CLIError.usage("--provider-id and --api-key-env are valid only for the opencode backend")
+        }
+        guard let baseURL, let providerID, !providerID.isEmpty,
+            let apiKeyEnvironmentVariable, !apiKeyEnvironmentVariable.isEmpty
+        else {
+            throw CLIError.usage(
+                "OpenCode custom providers require --base-url, --provider-id, and --api-key-env together")
+        }
+        guard let apiKey = ProcessInfo.processInfo.environment[apiKeyEnvironmentVariable], !apiKey.isEmpty else {
+            throw CLIError.unavailable("Missing API key environment variable: \(apiKeyEnvironmentVariable)")
+        }
+        return .init(id: providerID, baseURL: baseURL, apiKeyEnvironmentVariable: apiKeyEnvironmentVariable)
     }
 
     func resolvedExecutableURL() throws -> URL? {
@@ -171,8 +197,8 @@ private struct CLIOptions {
                 "Working directory is unavailable: \(workingDirectoryURL.path)"
             )
         }
-        if backend != .openai, baseURL != nil {
-            throw CLIError.usage("--base-url is valid only for the openai backend")
+        if backend != .openai, backend != .opencode, baseURL != nil {
+            throw CLIError.usage("--base-url is valid only for the openai or opencode backend")
         }
         guard backend != .openai else {
             if executablePath != nil {
@@ -191,7 +217,13 @@ private struct CLIOptions {
             return url
         }
 
-        let name = backend == .codex ? "codex" : "claude"
+        let name: String
+        switch backend {
+        case .codex: name = "codex"
+        case .claude: name = "claude"
+        case .opencode: name = "opencode"
+        case .openai: return nil
+        }
         guard let path = resolveOnPATH(name) else {
             throw CLIError.unavailable(
                 "\(name) was not found on PATH; pass --executable /absolute/path"

@@ -443,7 +443,7 @@ int ish_embed_boot(const ish_embed_boot_opts_t *opts,
         goto fail; /* err is already negative; map below */
     }
     if ((err = ish_ffi_become_init()) < 0) goto fail;
-    ish_ffi_create_devices();
+    if ((err = ish_ffi_create_devices()) < 0) goto fail;
 
     const char *sup = opts->supervisor_guest_path ? opts->supervisor_guest_path
                                                   : ISH_DEFAULT_SUPERVISOR_PATH;

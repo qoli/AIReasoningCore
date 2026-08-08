@@ -136,6 +136,41 @@ struct ChatCompletionsRunnerTests {
         #expect(object?["error"] != nil)
     }
 
+    @Test
+    func openCodeStructuredOutputFailsBeforeLaunchingBackend() async throws {
+        let output = LockedData()
+        let exitCode = await ChatCompletionsRunner().run(
+            input: Data(
+                """
+                {
+                  "model":"fixture-model",
+                  "messages":[{"role":"user","content":"Hello"}],
+                  "response_format":{"type":"json_object"},
+                  "stream":false
+                }
+                """.utf8
+            ),
+            configuration: .init(
+                backend: .opencode,
+                executableURL: URL(fileURLWithPath: "/must-not-launch/opencode"),
+                baseURL: nil,
+                workingDirectoryURL: URL(fileURLWithPath: "/tmp"),
+                timeoutSeconds: 1,
+                environment: [:]
+            ),
+            emit: { output.append($0) },
+            log: { _ in }
+        )
+
+        #expect(exitCode == 2)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: output.data) as? [String: Any]
+        )
+        let error = try #require(object["error"] as? [String: Any])
+        #expect(error["param"] as? String == "response_format")
+        #expect(error["code"] as? String == "unsupported_parameter")
+    }
+
     private func sseEvents(_ data: Data) throws -> [String] {
         let text = try #require(String(data: data, encoding: .utf8))
         return text

@@ -8,6 +8,7 @@ public enum AgentLanguageModelError: Error, LocalizedError, Sendable, Equatable 
     case unavailable(AgentLanguageModelUnavailableReason)
     case unsupportedTools
     case unsupportedGenerationOptions
+    case unsupportedStructuredOutput(driver: String)
     case unsupportedTranscriptToolEntry
     case invalidImageMIMEType(String)
     case invalidImageData(mimeType: String)
@@ -30,9 +31,11 @@ public enum AgentLanguageModelError: Error, LocalizedError, Sendable, Equatable 
         case .unavailable(let reason):
             "Language model unavailable: \(reason)"
         case .unsupportedTools:
-            "CodexLanguageModel and ClaudeLanguageModel do not accept LanguageModelSession tools in v1"
+            "Agent-backed language models do not accept LanguageModelSession tools in v1"
         case .unsupportedGenerationOptions:
             "The selected agent model cannot losslessly map these GenerationOptions"
+        case .unsupportedStructuredOutput(let driver):
+            "\(driver) cannot losslessly map structured output through its selected protocol"
         case .unsupportedTranscriptToolEntry:
             "The Swift session transcript contains tool calls or tool output, which agent models do not accept in v1"
         case .invalidImageMIMEType(let mimeType):

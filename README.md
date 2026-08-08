@@ -1,6 +1,6 @@
 # AIReasoningCore
 
-AIReasoningCore exposes Codex CLI and Claude Code as native
+AIReasoningCore exposes Codex CLI, Claude Code, and OpenCode as native
 [AnyLanguageModel](https://github.com/huggingface/AnyLanguageModel) models. It
 does not define a second AI request/result protocol. A separate
 `ai-reasoning` executable provides an OpenAI-compatible
@@ -35,14 +35,18 @@ for try await snapshot in session.streamResponse(to: "Write one sentence") {
 }
 ```
 
-`ClaudeLanguageModel` has the same configuration shape. Images use
+`ClaudeLanguageModel` and `OpenCodeLanguageModel` have the same configuration
+shape. Images use
 AnyLanguageModel `Transcript.ImageSegment`; structured generation uses
 `@Generable` and `respond(to:generating:)`. The model reconstructs every
 generation deterministically from `LanguageModelSession.transcript`; its
 subprocess conversation is always ephemeral.
 
 Codex requires CLI 0.146.0 or newer. Claude requires Claude Code 2.1.85 or
-newer. Missing executables, old versions, tool-bearing Swift sessions,
+newer. OpenCode requires 1.18.15 or newer and uses ACP stdio for real text
+deltas and base64 image blocks. ACP v1 has no lossless structured-output field,
+so OpenCode `@Generable` requests fail explicitly instead of injecting a JSON
+prompt contract. Missing executables, old versions, tool-bearing Swift sessions,
 unsupported generation options, corrupt images, protocol drift, timeout and
 cancellation are typed failures.
 
@@ -58,12 +62,22 @@ Run a request stored as an unmodified Chat Completions request body:
 
 ```bash
 .build/debug/ai-reasoning chat \
-  --backend codex \
+  --backend opencode \
   --input request.json \
-  --executable /opt/homebrew/bin/codex \
+  --executable /absolute/path/to/opencode \
+  --base-url https://api.deepseek.com/v1 \
+  --provider-id deepseek \
+  --api-key-env DEEPSEEK_API_KEY \
   --cwd /absolute/readable/root \
   --timeout-seconds 120
 ```
+
+For an explicit OpenCode-compatible provider, the three provider flags are
+required together. The named API-key environment variable must already be set;
+the credential is never accepted as a CLI flag or placed in `request.json`.
+The request model uses `provider/model`, for example
+`deepseek/deepseek-v4-flash`. Omitting any required provider value fails before
+the OpenCode subprocess starts.
 
 For `--backend openai`, set `OPENAI_API_KEY`; `--base-url` may select another
 OpenAI-compatible HTTP endpoint. `--output response.out` redirects protocol
@@ -87,11 +101,17 @@ explicitly for these two backends. `stream + tools`,
 fail explicitly. No backend, model, modality or execution-mode fallback is
 performed.
 
+OpenCode supports text, images, and true text streaming through ACP. Because
+ACP v1 does not carry an output schema, CLI `response_format` and passive
+function tools are explicit unsupported-parameter errors for this backend.
+`--pure`, disabled formatter/LSP/autoupdate, and deny-all tool permissions keep
+the subprocess consumer-neutral and non-agentic.
+
 ## iOS smoke app
 
 [`AIReasoningSmoke`](Smoke/AIReasoningSmoke) is an iOS 17 SwiftUI project that
 uses this repository as a local Swift package. It exercises explicit
-Codex/Claude/AnyLanguageModel selection, configuration validation, one-shot
+Codex/Claude/OpenCode/AnyLanguageModel selection, configuration validation, one-shot
 text, true text stream, `@Generable` structured output, Photos input and
 cancellation.
 
