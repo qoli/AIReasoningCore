@@ -227,16 +227,21 @@ private final class ISHEmbeddedAgentProcessSession: AgentProcessSession, @unchec
             .map { "\($0.key)=\($0.value)" }
             .sorted()
         var spawned: OpaquePointer?
-        let status = request.workingDirectoryURL.path.withCString { cwd in
-            withCStringArray(argv) { argvPointer in
-                withCStringArray(environment) { environmentPointer in
-                    var options = ish_embed_spawn_opts_t()
-                    options.argv = argvPointer
-                    options.cwd = cwd
-                    options.envp = environmentPointer
-                    options.allocate_tty = 0
-                    options.merge_stderr_into_stdout = 0
-                    return ARISHRuntimeSpawn(instance, &options, &spawned)
+        let status = request.initialStandardInput.withUnsafeOptionalBytes { initialBytes in
+            request.workingDirectoryURL.path.withCString { cwd in
+                withCStringArray(argv) { argvPointer in
+                    withCStringArray(environment) { environmentPointer in
+                        var options = ish_embed_spawn_opts_t()
+                        options.argv = argvPointer
+                        options.cwd = cwd
+                        options.envp = environmentPointer
+                        options.allocate_tty = 0
+                        options.merge_stderr_into_stdout = 0
+                        options.initial_stdin = initialBytes?.baseAddress?
+                            .assumingMemoryBound(to: UInt8.self)
+                        options.initial_stdin_length = initialBytes?.count ?? 0
+                        return ARISHRuntimeSpawn(instance, &options, &spawned)
+                    }
                 }
             }
         }
@@ -468,6 +473,19 @@ private func withCStringArray<Result>(
     pointers.append(nil)
     return try pointers.withUnsafeBufferPointer { buffer in
         try body(buffer.baseAddress)
+    }
+}
+
+private extension Optional where Wrapped == Data {
+    func withUnsafeOptionalBytes<Result>(
+        _ body: (UnsafeRawBufferPointer?) throws -> Result
+    ) rethrows -> Result {
+        switch self {
+        case .none:
+            return try body(nil)
+        case .some(let data):
+            return try data.withUnsafeBytes { try body($0) }
+        }
     }
 }
 

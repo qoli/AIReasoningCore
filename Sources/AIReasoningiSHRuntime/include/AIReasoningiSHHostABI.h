@@ -93,6 +93,10 @@ typedef struct ish_embed_spawn_opts {
     uint16_t init_cols;
     uint16_t init_xpixel;
     uint16_t init_ypixel;
+    /* Optional bytes preloaded into the child stdin pipe before exec.
+     * This avoids a cooperative-scheduling race for large guest programs. */
+    const uint8_t *initial_stdin;
+    size_t initial_stdin_length;
 } ish_embed_spawn_opts_t;
 
 typedef struct ish_embed_oneshot_result {

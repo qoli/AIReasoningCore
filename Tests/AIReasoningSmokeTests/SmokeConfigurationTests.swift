@@ -244,6 +244,48 @@ struct SmokeConfigurationTests {
     }
 
     @Test @MainActor
+    func selectingCodexProvidesGuestExecutableDefaults() {
+        let viewModel = SmokeViewModel(initialBackend: .codex)
+
+        #expect(viewModel.backend == .codex)
+        #expect(viewModel.executablePath == "/usr/local/bin/codex")
+        #expect(viewModel.workingDirectoryPath == "/root")
+    }
+
+    @Test @MainActor
+    func selectingCodexPreservesExplicitGuestPaths() {
+        let viewModel = SmokeViewModel()
+        viewModel.backend = .codex
+        viewModel.executablePath = "/opt/bin/codex"
+        viewModel.workingDirectoryPath = "/workspace"
+
+        viewModel.backendDidChange()
+
+        #expect(viewModel.executablePath == "/opt/bin/codex")
+        #expect(viewModel.workingDirectoryPath == "/workspace")
+    }
+
+    @Test @MainActor
+    func codexAuthenticationUsesTheDeviceCodeValidityWindow() async throws {
+        let executor = SmokeFixtureExecutor(events: [
+            .standardOutputLine("Not logged in"),
+            .terminated(exitCode: 1),
+        ])
+        let viewModel = SmokeViewModel(processExecutor: executor)
+        viewModel.backend = .codex
+        viewModel.executablePath = "/usr/local/bin/codex"
+        viewModel.workingDirectoryPath = "/root"
+        viewModel.timeoutSeconds = 120
+
+        viewModel.refreshCodexAuthentication()
+        while viewModel.isAuthenticating {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(executor.requests.first?.timeout == .seconds(900))
+    }
+
+    @Test @MainActor
     func codexRunStopsAfterUnauthenticatedPreflight() async throws {
         let executor = SmokeFixtureExecutor(events: [
             .standardOutputLine("Not logged in"),

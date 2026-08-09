@@ -103,9 +103,12 @@ final class SmokeViewModel: ObservableObject {
     private var authenticationTask: Task<Void, Never>?
 
     init(
+        initialBackend: SmokeBackend = .anyLanguageModelOpenAI,
         processExecutor: any AgentProcessExecuting = ISHEmbeddedProcessExecutor()
     ) {
         self.processExecutor = processExecutor
+        backend = initialBackend
+        applyBackendDefaults()
     }
 
     var isRunning: Bool {
@@ -179,7 +182,18 @@ final class SmokeViewModel: ObservableObject {
         codexLoginCredential = ""
         codexAuthenticationOutput = ""
         codexAuthenticationState = .unchecked
-        if backend == .openCode {
+        applyBackendDefaults()
+    }
+
+    private func applyBackendDefaults() {
+        if backend == .codex {
+            if executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                executablePath = "/usr/local/bin/codex"
+            }
+            if workingDirectoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                workingDirectoryPath = "/root"
+            }
+        } else if backend == .openCode {
             if model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 model = "deepseek/deepseek-v4-flash"
             }

@@ -18,11 +18,23 @@ case "$OUTPUT" in
 esac
 
 ISH="$ROOT/Upstreams/iSH"
-PATCH="$ROOT/Patches/iSH/$(sed -n '1p' "$ROOT/Patches/iSH/series")"
+PATCH_DIR="$ROOT/Patches/iSH"
+SERIES="$PATCH_DIR/series"
 [ "$(git -C "$ISH" rev-parse HEAD)" = "$ISH_COMMIT" ] || fail "iSH is not at the pinned commit"
-git -C "$ISH" apply --reverse --check "$PATCH" || fail "the approved iSH patch is not applied"
-unexpected=$(git -C "$ISH" status --porcelain --untracked-files=all | awk '$2 != "kernel/exit.c" && $2 != "kernel/task.h" { print }')
-[ -z "$unexpected" ] || fail "iSH contains changes outside the approved patch"
+index=$(mktemp "${TMPDIR:-/tmp}/ai-reasoning-ish-index.XXXXXX")
+rm -f "$index"
+GIT_INDEX_FILE="$index" git -C "$ISH" read-tree "$ISH_COMMIT"
+while IFS= read -r patch; do
+    case "$patch" in ""|'#'*) continue ;; esac
+    GIT_INDEX_FILE="$index" git -C "$ISH" apply --cached --whitespace=error-all "$PATCH_DIR/$patch"
+done < "$SERIES"
+expected_hash=$(GIT_INDEX_FILE="$index" git -C "$ISH" diff --cached --binary |
+    shasum -a 256 | awk '{ print $1 }')
+rm -f "$index"
+actual_hash=$(git -C "$ISH" diff --binary | shasum -a 256 | awk '{ print $1 }')
+[ -z "$(git -C "$ISH" ls-files --others --exclude-standard)" ] ||
+    fail "iSH contains untracked changes outside the approved patch series"
+[ "$actual_hash" = "$expected_hash" ] || fail "the approved iSH patch series is not applied exactly"
 command -v zig >/dev/null 2>&1 || fail "zig is required to build the arm64 Linux guest supervisor"
 
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai-reasoning-ish-host.XXXXXX")

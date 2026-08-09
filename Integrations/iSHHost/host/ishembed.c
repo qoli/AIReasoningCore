@@ -563,7 +563,7 @@ fail:;
  *  spawn / sessions                                               *
  * --------------------------------------------------------------- */
 
-/* serialize argv/envp/initial-winsize into a SPAWN payload.
+/* serialize argv/envp/initial-winsize/initial-stdin into a SPAWN payload.
  * argv must not be NULL. The trailing winsize bytes are always
  * emitted (proto v3); v2 supervisors silently ignore them. */
 static int build_spawn_payload(const char *cwd,
@@ -571,6 +571,8 @@ static int build_spawn_payload(const char *cwd,
                                const char *const *envp,
                                uint16_t init_rows, uint16_t init_cols,
                                uint16_t init_xpix, uint16_t init_ypix,
+                               const uint8_t *initial_stdin,
+                               size_t initial_stdin_length,
                                uint8_t **out_buf, uint32_t *out_len) {
     size_t cap = 64;
     size_t cwd_len = cwd ? strlen(cwd) : 0;
@@ -579,7 +581,11 @@ static int build_spawn_payload(const char *cwd,
     if (argv) for (; argv[argc]; argc++) ;
     size_t envc = 0;
     if (envp) for (; envp[envc]; envc++) ;
-    cap += cwd_len + chroot_len + 8 /* winsize tail */;
+    if (initial_stdin_length > 4096 ||
+        (initial_stdin_length > 0 && initial_stdin == NULL))
+        return ISH_ERR_INVALID_ARG;
+    cap += cwd_len + chroot_len + 8 /* winsize tail */
+        + 4 + initial_stdin_length;
     for (size_t i = 0; i < argc; i++) cap += strlen(argv[i]) + 8;
     for (size_t i = 0; i < envc; i++) cap += strlen(envp[i]) + 8;
 
@@ -606,6 +612,12 @@ static int build_spawn_payload(const char *cwd,
     ish_proto_put_u16(buf + off, init_cols); off += 2;
     ish_proto_put_u16(buf + off, init_xpix); off += 2;
     ish_proto_put_u16(buf + off, init_ypix); off += 2;
+    /* v4 tail: bytes the supervisor places in the child pipe before exec. */
+    ish_proto_put_u32(buf + off, (uint32_t)initial_stdin_length); off += 4;
+    if (initial_stdin_length) {
+        memcpy(buf + off, initial_stdin, initial_stdin_length);
+        off += initial_stdin_length;
+    }
     *out_buf = buf;
     *out_len = (uint32_t)off;
     return ISH_OK;
@@ -640,6 +652,7 @@ int ish_embed_spawn(ish_embed_instance_t *inst,
     int rc = build_spawn_payload(opts->cwd, opts->argv, opts->envp,
                                  opts->init_rows, opts->init_cols,
                                  opts->init_xpixel, opts->init_ypixel,
+                                 opts->initial_stdin, opts->initial_stdin_length,
                                  &payload, &plen);
     if (rc != 0) {
         session_unlink(inst, s);

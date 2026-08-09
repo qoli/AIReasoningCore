@@ -26,7 +26,9 @@ tar -tzf "$SOURCE" | grep -Eq '/iSH/LICENSE\.md$' ||
 tar -tzf "$SOURCE" | grep -Eq '/iSH/LICENSE\.IOS$' ||
     fail "source bundle lacks iSH LICENSE.IOS"
 tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Patches/iSH/0001-embedded-system-halt-hook\.patch$' ||
-    fail "source bundle lacks the approved patch"
+    fail "source bundle lacks the approved halt-hook patch"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Patches/iSH/0002-fix-arm64-ld1-halfword-lane\.patch$' ||
+    fail "source bundle lacks the approved ARM64 LD1 lane patch"
 tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Integrations/iSHHost/host/ishembed\.c$' ||
     fail "source bundle lacks the embedding host source"
 tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Integrations/iSHHost/supervisor/ishsv\.c$' ||

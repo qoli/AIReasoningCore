@@ -9,9 +9,10 @@ checks this technical boundary.
 `Scripts/build-ish-host.sh` builds the pinned upstream `libiSHApp` target and
 combines it with the GPL host/protocol implementation under
 `Integrations/iSHHost`. It emits an opt-in XCFramework and guest supervisor
-without changing the upstream `.pbxproj`. The only upstream patch is the
-two-file embedding-safe system halt hook; stdin, stdout, process groups and
-session multiplexing live entirely in this repository.
+without changing the upstream `.pbxproj`. The upstream patch series contains
+only the two-file embedding-safe system halt hook and a two-line ARM64 `LD1`
+halfword-lane decoder correction; stdin, stdout, process groups and session
+multiplexing live entirely in this repository.
 
 An app that consumes the XCFramework must also import `AIReasoningiSH`, call
 `ISHEmbeddedRuntime.register(hostRuntime:)` with
@@ -33,8 +34,8 @@ terms. Before distributing any app that links iSH:
 1. Have the release owner review GPL obligations and `LICENSE.IOS`.
 2. Include the required copyright and license notices in the shipped app.
 3. Publish the complete corresponding source for the precise iSH gitlink,
-   approved patch, host/protocol/supervisor sources, relevant nested dependency
-   sources and build instructions.
+   approved patch series, host/protocol/supervisor sources, relevant nested
+   dependency sources and build instructions.
 4. Keep that source available for the legally required period and ensure the
    distributed binary can be matched to its source bundle hash.
 5. Run `package-ish-source.sh` and `verify-ish-release-compliance.sh` against

@@ -69,11 +69,11 @@ struct CodexCLIAuthenticationManagerTests {
     }
 
     @Test
-    func deviceLoginStreamsInstructionsThenVerifiesStatus() async throws {
+    func deviceLoginUsesCLIAndStreamsItsOutputVerbatim() async throws {
         let executor = FixtureExecutor(responses: [
             .immediate([
-                .standardOutputLine("Open https://example.test/device"),
-                .standardOutputLine("Enter ABCD-EFGH"),
+                .standardErrorLine("Open https://auth.openai.com/codex/device"),
+                .standardErrorLine("Enter ABCD-EFGH"),
                 .terminated(exitCode: 0),
             ]),
             .immediate([
@@ -90,13 +90,15 @@ struct CodexCLIAuthenticationManagerTests {
         #expect(status == .authenticated(description: "Logged in using ChatGPT"))
         #expect(
             await collector.values == [
-                .init(stream: .standardOutput, line: "Open https://example.test/device"),
-                .init(stream: .standardOutput, line: "Enter ABCD-EFGH"),
+                .init(stream: .standardError, line: "Open https://auth.openai.com/codex/device"),
+                .init(stream: .standardError, line: "Enter ABCD-EFGH"),
             ]
         )
         let requests = executor.requests
         #expect(requests.map(\.arguments) == [["login", "--device-auth"], ["login", "status"]])
-        #expect(executor.sessions.map(\.standardInputClosed) == [true, true])
+        #expect(executor.sessions[0].standardInputClosed)
+        #expect(requests[0].initialStandardInput == nil)
+        #expect(executor.sessions[0].standardInput.isEmpty)
     }
 
     @Test
@@ -150,14 +152,14 @@ struct CodexCLIAuthenticationManagerTests {
         let executor = FixtureExecutor(responses: [
             .immediate([
                 .standardErrorLine("authorization denied"),
-                .terminated(exitCode: 9),
+                .terminated(exitCode: 1),
             ]),
         ])
 
         await #expect(
             throws: CodexCLIAuthenticationError.commandFailed(
                 operation: .deviceLogin,
-                exitCode: 9,
+                exitCode: 1,
                 standardError: "authorization denied"
             )
         ) {

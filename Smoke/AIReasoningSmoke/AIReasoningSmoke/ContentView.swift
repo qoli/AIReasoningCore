@@ -5,8 +5,19 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var viewModel = SmokeViewModel()
+    @StateObject private var viewModel: SmokeViewModel
     @State private var selectedPhoto: PhotosPickerItem?
+
+    init() {
+        #if AIREASONING_ISH_HOST_SMOKE
+            let backend = SmokeBackend.codex
+        #else
+            let backend = SmokeBackend.anyLanguageModelOpenAI
+        #endif
+        _viewModel = StateObject(
+            wrappedValue: SmokeViewModel(initialBackend: backend)
+        )
+    }
 
     var body: some View {
         NavigationStack {

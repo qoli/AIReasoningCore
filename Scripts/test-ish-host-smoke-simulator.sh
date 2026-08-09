@@ -104,7 +104,8 @@ plutil -insert sha256 -string "$DIGEST" "$MANIFEST"
 
 xcrun simctl uninstall "$SIMULATOR_UDID" "$BUNDLE_IDENTIFIER" 2>/dev/null || true
 xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
-xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" "$BUNDLE_IDENTIFIER"
+xcrun simctl launch --terminate-running-process "$SIMULATOR_UDID" "$BUNDLE_IDENTIFIER" \
+    --run-ish-bootstrap-smoke
 DATA_CONTAINER=$(xcrun simctl get_app_container "$SIMULATOR_UDID" "$BUNDLE_IDENTIFIER" data)
 STATUS="$DATA_CONTAINER/Library/Application Support/iSHHostSmoke.status.json"
 

@@ -52,12 +52,14 @@ import Foundation
                 sha256: manifest.sha256), at: destination)
         try ISHEmbeddedRuntime.shared.boot(.init(rootFileSystemURL: prepared, supervisorExecutableURL: supervisor))
         recordSmokeStatus(.init(state: "booted", detail: prepared.path))
-        Task {
-            await runGuestCommandSmoke(
-                codexExecutablePath: manifest.codexExecutablePath,
-                openCodeExecutablePath: manifest.openCodeExecutablePath, openCodeModel: manifest.openCodeModel,
-                openCodeProviderID: manifest.openCodeProviderID, openCodeBaseURL: manifest.openCodeBaseURL,
-                openCodeAPIKeyEnvironmentVariable: manifest.openCodeAPIKeyEnvironmentVariable)
+        if ProcessInfo.processInfo.arguments.contains("--run-ish-bootstrap-smoke") {
+            Task {
+                await runGuestCommandSmoke(
+                    codexExecutablePath: manifest.codexExecutablePath,
+                    openCodeExecutablePath: manifest.openCodeExecutablePath, openCodeModel: manifest.openCodeModel,
+                    openCodeProviderID: manifest.openCodeProviderID, openCodeBaseURL: manifest.openCodeBaseURL,
+                    openCodeAPIKeyEnvironmentVariable: manifest.openCodeAPIKeyEnvironmentVariable)
+            }
         }
     }
 

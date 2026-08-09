@@ -39,14 +39,15 @@ The OpenMinis fork remains responsible for its own relationship to
 1. Start from a clean root worktree and leave the current pin intact.
 2. Evaluate the candidate in a temporary checkout. The host/protocol/
    supervisor implementation belongs to `Integrations/iSHHost`, not the fork.
-3. If upstream now provides an embedding-safe system halt callback, delete the
-   patch and bind to that API. Otherwise regenerate the single patch limited to
-   `kernel/exit.c` and `kernel/task.h`; ordinary iSH must retain `_exit(0)`.
+3. Re-evaluate every root-owned patch independently. If upstream provides an
+   equivalent fix, delete that patch. Otherwise keep the halt-hook patch limited
+   to `kernel/exit.c` and `kernel/task.h`, and the ARM64 SIMD correction limited
+   to the halfword-lane decoder in `asbestos/guest-arm64/gen.c`.
 4. Never use `git apply --3way`; patch drift rejects the candidate.
 5. Update the gitlink, `ISH_COMMIT`, `ISH_VERSION`, and
    `Patches/manifest.sha256`.
 6. Run `verify-upstreams.sh`. It checks the official remote, gitlink, manifest,
-   clean replay and identical diff hashes across two independent replays.
+   ordered series replay and identical combined diff hashes across two replays.
 7. Run `prepare-ish-integration.sh`, `build-ish-host.sh`, the runtime/bridge
    tests, an Xcode link/launch smoke and the release compliance gate.
 

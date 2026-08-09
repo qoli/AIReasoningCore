@@ -5,7 +5,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 . "$ROOT/Upstreams.env"
-PATCH="$ROOT/Patches/iSH/$(sed -n '1p' "$ROOT/Patches/iSH/series")"
+PATCH_DIR="$ROOT/Patches/iSH"
+SERIES="$PATCH_DIR/series"
 
 fail() {
     printf '%s\n' "AIReasoningCore upstream verification failed: $*" >&2
@@ -92,10 +93,11 @@ git -C "$TEMP_ROOT/iSH" checkout --quiet --detach "$ISH_COMMIT"
     fail "temporary iSH verification checkout does not use the official remote"
 
 apply_and_hash() {
-    git -C "$TEMP_ROOT/iSH" apply --check --whitespace=error-all \
-        "$PATCH"
-    git -C "$TEMP_ROOT/iSH" apply --whitespace=error-all \
-        "$PATCH"
+    while IFS= read -r patch; do
+        case "$patch" in ""|'#'*) continue ;; esac
+        git -C "$TEMP_ROOT/iSH" apply --check --whitespace=error-all "$PATCH_DIR/$patch"
+        git -C "$TEMP_ROOT/iSH" apply --whitespace=error-all "$PATCH_DIR/$patch"
+    done < "$SERIES"
     git -C "$TEMP_ROOT/iSH" diff --binary |
         shasum -a 256 |
         awk '{ print $1 }'
@@ -108,4 +110,4 @@ second_hash=$(apply_and_hash)
 [ "$first_hash" = "$second_hash" ] ||
     fail "iSH patch replay is not deterministic"
 
-printf '%s\n' "AIReasoningCore upstream verification passed (iSH patch diff $first_hash)."
+printf '%s\n' "AIReasoningCore upstream verification passed (iSH patch-series diff $first_hash)."

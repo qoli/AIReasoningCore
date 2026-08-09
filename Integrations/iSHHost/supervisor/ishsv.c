@@ -203,12 +203,15 @@ struct spawn_args {
     uint16_t  init_cols;
     uint16_t  init_xpix;
     uint16_t  init_ypix;
+    uint8_t  *initial_stdin;
+    uint32_t  initial_stdin_length;
 };
 
 static void free_spawn_args(struct spawn_args *a) {
     if (!a) return;
     free(a->cwd);
     free(a->chroot_path);
+    free(a->initial_stdin);
     if (a->argv) { for (int i = 0; a->argv[i]; i++) free(a->argv[i]); free(a->argv); }
     if (a->envp) { for (int i = 0; a->envp[i]; i++) free(a->envp[i]); free(a->envp); }
     memset(a, 0, sizeof(*a));
@@ -278,6 +281,18 @@ static int parse_spawn_payload(const uint8_t *p, uint32_t plen,
         out->init_xpix = ish_proto_get_u16(p + off + 4);
         out->init_ypix = ish_proto_get_u16(p + off + 6);
         off += 8;
+    }
+    /* Optional initial stdin (v4). Bounded so it always fits the child pipe. */
+    if (off + 4 <= plen) {
+        uint32_t length = ish_proto_get_u32(p + off); off += 4;
+        if (length > 4096 || off + length > plen) return -1;
+        if (length > 0) {
+            out->initial_stdin = (uint8_t *)malloc(length);
+            if (!out->initial_stdin) return -1;
+            memcpy(out->initial_stdin, p + off, length);
+            out->initial_stdin_length = length;
+            off += length;
+        }
     }
     /* Be lenient about any remaining tail bytes: that's how future
      * proto versions extend SPAWN. We've parsed everything we know;
@@ -574,6 +589,22 @@ static int do_spawn(uint32_t sid, uint8_t flags, const uint8_t *p, uint32_t plen
             free_spawn_args(&sa);
             free_session(s);
             return -1;
+        }
+        if (sa.initial_stdin_length > 0) {
+            ssize_t written = write(
+                in_pipe[1],
+                sa.initial_stdin,
+                sa.initial_stdin_length
+            );
+            if (written != (ssize_t)sa.initial_stdin_length) {
+                emit_error(sid, errno ? errno : EIO, "initial stdin preload failed");
+                close(in_pipe[0]);  close(in_pipe[1]);
+                close(out_pipe[0]); close(out_pipe[1]);
+                if (!s->merge_stderr) { close(err_pipe[0]); close(err_pipe[1]); }
+                free_spawn_args(&sa);
+                free_session(s);
+                return -1;
+            }
         }
     }
 

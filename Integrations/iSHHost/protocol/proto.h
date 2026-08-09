@@ -37,7 +37,7 @@
 #include <stdint.h>
 
 #define ISH_PROTO_MAGIC      0xE5u
-#define ISH_PROTO_VERSION    3u
+#define ISH_PROTO_VERSION    4u
 #define ISH_PROTO_HDR_SIZE   12   /* magic+ver+type+flags + u32 len + u32 sid  */
 #define ISH_PROTO_MAX_PAYLOAD (1u * 1024u * 1024u)  /* 1 MiB hard cap */
 

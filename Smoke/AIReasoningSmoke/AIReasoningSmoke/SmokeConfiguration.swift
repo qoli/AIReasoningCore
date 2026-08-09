@@ -127,6 +127,7 @@ struct SmokeConfiguration {
                     fileURLWithPath: workingDirectoryPath,
                     isDirectory: true
                 ),
+                environment: guestEnvironment(home: workingDirectoryPath),
                 timeout: Duration.seconds(timeoutSeconds)
             )
             switch backend {
@@ -136,6 +137,7 @@ struct SmokeConfiguration {
                         executableURL: common.executableURL,
                         model: common.model,
                         workingDirectoryURL: common.workingDirectoryURL,
+                        environment: common.environment,
                         timeout: common.timeout
                     ),
                     executor: executor
@@ -146,13 +148,14 @@ struct SmokeConfiguration {
                         executableURL: common.executableURL,
                         model: common.model,
                         workingDirectoryURL: common.workingDirectoryURL,
+                        environment: common.environment,
                         timeout: common.timeout
                     ),
                     executor: executor
                 )
             case .openCode:
                 let provider: OpenCodeLanguageModel.ProviderConfiguration?
-                var environment: [String: String] = [:]
+                var environment = common.environment
                 if baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 {
@@ -226,7 +229,11 @@ struct SmokeConfiguration {
                     fileURLWithPath: workingDirectoryPath,
                     isDirectory: true
                 ),
-                timeout: .seconds(timeoutSeconds)
+                environment: guestEnvironment(home: workingDirectoryPath),
+                // Codex device codes are valid for 15 minutes. Authentication
+                // must not inherit a shorter generation timeout and terminate
+                // while the user is completing the browser confirmation.
+                timeout: .seconds(max(timeoutSeconds, 900))
             ),
             executor: executor
         )
@@ -283,6 +290,14 @@ struct SmokeConfiguration {
             throw SmokeConfigurationError.invalidBaseURL
         }
         return url
+    }
+
+    private func guestEnvironment(home: String) -> [String: String] {
+        [
+            "HOME": home,
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+            "SSL_CERT_FILE": "/etc/ssl/cert.pem",
+        ]
     }
 }
 

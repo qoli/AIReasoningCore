@@ -8,19 +8,22 @@ public struct AgentProcessRequest: Sendable, Equatable {
     public let environment: [String: String]
     public let workingDirectoryURL: URL
     public let timeout: Duration
+    public let initialStandardInput: Data?
 
     public init(
         executableURL: URL,
         arguments: [String],
         environment: [String: String] = [:],
         workingDirectoryURL: URL,
-        timeout: Duration = .seconds(120)
+        timeout: Duration = .seconds(120),
+        initialStandardInput: Data? = nil
     ) {
         self.executableURL = executableURL
         self.arguments = arguments
         self.environment = environment
         self.workingDirectoryURL = workingDirectoryURL
         self.timeout = timeout
+        self.initialStandardInput = initialStandardInput
     }
 }
 

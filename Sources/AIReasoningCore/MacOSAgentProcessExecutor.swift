@@ -15,7 +15,6 @@ public struct MacOSAgentProcessExecutor: AgentProcessExecuting {
         guard isExecutableAvailable(at: request.executableURL) else {
             throw AgentProcessExecutionError.executableUnavailable(request.executableURL.path)
         }
-
         let process = Process()
         let standardInput = Pipe()
         let standardOutput = Pipe()
@@ -55,6 +54,9 @@ public struct MacOSAgentProcessExecutor: AgentProcessExecuting {
             )
         }
         session.didLaunch()
+        if let initialStandardInput = request.initialStandardInput {
+            try await session.writeStandardInput(initialStandardInput)
+        }
         return session
     }
 }

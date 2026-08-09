@@ -5,8 +5,8 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 . "$ROOT/Upstreams.env"
-PATCH_NAME=$(sed -n '1p' "$ROOT/Patches/iSH/series")
-PATCH="$ROOT/Patches/iSH/$PATCH_NAME"
+PATCH_DIR="$ROOT/Patches/iSH"
+SERIES="$PATCH_DIR/series"
 
 fail() {
     printf '%s\n' "AIReasoningCore iSH source packaging failed: $*" >&2
@@ -22,15 +22,21 @@ esac
 
 [ "$(git -C "$ROOT/Upstreams/iSH" rev-parse HEAD)" = "$ISH_COMMIT" ] ||
     fail "iSH is not at the pinned commit"
-git -C "$ROOT/Upstreams/iSH" apply --reverse --check \
-    "$PATCH" ||
-    fail "the approved iSH patch is not applied"
-
-unexpected=$(
-    git -C "$ROOT/Upstreams/iSH" status --porcelain --untracked-files=all |
-        awk '$2 != "kernel/exit.c" && $2 != "kernel/task.h" { print }'
-)
-[ -z "$unexpected" ] || fail "iSH contains changes outside the approved patch"
+index=$(mktemp "${TMPDIR:-/tmp}/ai-reasoning-ish-index.XXXXXX")
+rm -f "$index"
+GIT_INDEX_FILE="$index" git -C "$ROOT/Upstreams/iSH" read-tree "$ISH_COMMIT"
+while IFS= read -r patch; do
+    case "$patch" in ""|'#'*) continue ;; esac
+    GIT_INDEX_FILE="$index" git -C "$ROOT/Upstreams/iSH" apply \
+        --cached --whitespace=error-all "$PATCH_DIR/$patch"
+done < "$SERIES"
+expected_hash=$(GIT_INDEX_FILE="$index" git -C "$ROOT/Upstreams/iSH" diff --cached --binary |
+    shasum -a 256 | awk '{ print $1 }')
+rm -f "$index"
+actual_hash=$(git -C "$ROOT/Upstreams/iSH" diff --binary | shasum -a 256 | awk '{ print $1 }')
+[ -z "$(git -C "$ROOT/Upstreams/iSH" ls-files --others --exclude-standard)" ] ||
+    fail "iSH contains untracked changes outside the approved patch series"
+[ "$actual_hash" = "$expected_hash" ] || fail "the approved iSH patch series is not applied exactly"
 
 TEMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/ai-reasoning-ish-source.XXXXXX")
 trap 'rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
@@ -47,8 +53,10 @@ tar -C "$ROOT/Upstreams/iSH" --exclude=.git -cf - . |
     tar -C "$BUNDLE/iSH" -xf -
 cp "$ROOT/Upstreams.env" "$BUNDLE/AIReasoningCore/"
 cp "$ROOT/.gitmodules" "$BUNDLE/AIReasoningCore/"
-cp "$PATCH" \
-    "$BUNDLE/AIReasoningCore/Patches/iSH/"
+while IFS= read -r patch; do
+    case "$patch" in ""|'#'*) continue ;; esac
+    cp "$PATCH_DIR/$patch" "$BUNDLE/AIReasoningCore/Patches/iSH/"
+done < "$SERIES"
 cp "$ROOT/Patches/iSH/series" "$BUNDLE/AIReasoningCore/Patches/iSH/"
 tar -C "$ROOT/Integrations/iSHHost" -cf - . |
     tar -C "$BUNDLE/AIReasoningCore/Integrations/iSHHost" -xf -
