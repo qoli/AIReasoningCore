@@ -1,4 +1,5 @@
 // swift-tools-version: 6.1
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 import PackageDescription
 

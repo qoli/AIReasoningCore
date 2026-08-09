@@ -121,9 +121,11 @@ cancellation.
 ./Scripts/test-ios-smoke-simulator.sh
 ```
 
-The baseline target links `AIReasoningiSH` but not the GPL iSH host runtime.
-Codex and Claude therefore display typed `runtimeNotLinked` until an
-integrating app explicitly links, registers and boots the generated host.
+All AIReasoningCore products are licensed under GPL-3.0-or-later. The baseline
+target links `AIReasoningiSH` but does not embed the separate OpenMinis iSH
+emulator/host runtime. Codex and Claude therefore display typed
+`runtimeNotLinked` until an integrating app explicitly links, registers and
+boots the generated host.
 `runtimeNotBooted` distinguishes a linked host from a prepared writable rootfs.
 The app never switches backend when the selected backend is unavailable.
 
@@ -180,6 +182,7 @@ swift test
 ./Scripts/test-cli-sigint.sh
 ./Scripts/typecheck-ios-smoke.sh
 ./Scripts/test-ios-smoke.sh
+./Scripts/verify-license-metadata.sh
 ./Scripts/verify-upstreams.sh
 ./Scripts/verify-agent-cli-contracts.sh
 ./Scripts/verify-smoke-agent-cli-fixtures.sh
@@ -187,3 +190,10 @@ swift test
 ```
 
 Live provider tests are deliberately opt-in and are not run by ordinary CI.
+
+## License
+
+AIReasoningCore is licensed under
+[GPL-3.0-or-later](LICENSE). Third-party dependencies and opt-in components
+retain their own licenses; see [NOTICE](NOTICE) and
+[iSH distribution compliance](Docs/ISH-COMPLIANCE.md).

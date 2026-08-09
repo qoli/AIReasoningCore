@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
@@ -57,6 +59,8 @@ tar -C "$ROOT/Sources/AIReasoningiSH" -cf - . |
 tar -C "$ROOT/Scripts/toolchain" -cf - . |
     tar -C "$BUNDLE/AIReasoningCore/Scripts/toolchain" -xf -
 cp "$ROOT/Scripts/build-ish-host.sh" "$BUNDLE/AIReasoningCore/"
+cp "$ROOT/LICENSE" "$BUNDLE/AIReasoningCore/"
+cp "$ROOT/NOTICE" "$BUNDLE/AIReasoningCore/"
 cp "$ROOT/Package.swift" "$BUNDLE/AIReasoningCore/"
 cp "$ROOT/Package.resolved" "$BUNDLE/AIReasoningCore/"
 cp "$ROOT/Docs/UPSTREAMS.md" "$BUNDLE/AIReasoningCore/"

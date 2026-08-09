@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # Build the i386 musl-static PID1 supervisor with zig.
 #
 # Why zig: it ships a built-in cross toolchain for i386-linux-musl with

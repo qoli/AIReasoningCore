@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 set -eu
 
 if [ "${1:-}" = "--version" ]; then

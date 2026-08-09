@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
 #ifndef AIReasoningiSHTestSupport_h
 #define AIReasoningiSHTestSupport_h
 

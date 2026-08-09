@@ -1,4 +1,6 @@
 #!/usr/bin/env swift
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 
 import CryptoKit
 import Foundation

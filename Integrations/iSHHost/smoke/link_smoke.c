@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+
 #include "AIReasoningiSHHost.h"
 
 int main(void) {

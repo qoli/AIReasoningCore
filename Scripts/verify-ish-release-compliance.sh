@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 set -eu
 
 fail() {
@@ -33,6 +35,10 @@ tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Sources/AIReasoningiSH/ISHEmbedd
     fail "source bundle lacks the Swift executor source"
 tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Scripts/toolchain/clang$' ||
     fail "source bundle lacks the pinned host toolchain wrapper"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/LICENSE$' ||
+    fail "source bundle lacks the AIReasoningCore GPL license"
+tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/NOTICE$' ||
+    fail "source bundle lacks the AIReasoningCore third-party notices"
 tar -tzf "$SOURCE" | grep -Eq '/AIReasoningCore/Package\.swift$' ||
     fail "source bundle lacks the Swift package manifest"
 grep -Eiq 'iSH' "$NOTICES" || fail "release notices do not name iSH"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 @testable import AIReasoningSmokeSupport
 import AIReasoningCore
 import AnyLanguageModel

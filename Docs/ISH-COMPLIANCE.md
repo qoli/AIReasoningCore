@@ -1,8 +1,10 @@
 # iSH distribution compliance gate
 
-`AIReasoningiSH` is opt-in. The normal `AIReasoningCore` and `ai-reasoning`
-artifacts neither compile nor link iSH; `verify-no-ish-linkage.sh` checks this
-boundary.
+The repository and all AIReasoningCore products are licensed under
+GPL-3.0-or-later. `AIReasoningiSH` remains an opt-in integration boundary: the
+normal `AIReasoningCore` and `ai-reasoning` artifacts neither compile nor link
+the separate OpenMinis iSH emulator/host runtime; `verify-no-ish-linkage.sh`
+checks this technical boundary.
 
 `Scripts/build-ish-host.sh` builds the pinned upstream `libiSHApp` target and
 combines it with the GPL host/protocol implementation under
@@ -24,9 +26,9 @@ successful guest command. No rootfs image or authentication state belongs in
 the repository or the corresponding-source archive.
 
 iSH identifies its code as GPLv3, with additional terms in `LICENSE.IOS`, and
-describes additional GPLv2 licensing for qualifying contributions. This
-repository does not reinterpret those terms. Before distributing any app that
-links iSH:
+describes additional GPLv2 licensing for qualifying contributions. The root
+AIReasoningCore license does not replace, broaden or reinterpret those upstream
+terms. Before distributing any app that links iSH:
 
 1. Have the release owner review GPL obligations and `LICENSE.IOS`.
 2. Include the required copyright and license notices in the shipped app.
