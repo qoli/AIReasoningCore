@@ -47,6 +47,11 @@ committed to this repository. Provider credentials likewise belong to that
 app-owned guest environment (OpenCode's auth store or explicit provider
 environment variables). A standalone iSH app's auth store is not shared.
 
+`../Fixtures/AgentCLI.env` is a Smoke-only reproducibility manifest for the
+tested OpenCode and Alpine artifacts. It is neither consumed by Core at runtime
+nor included in the iSH source bundle. The Smoke runner still requires an
+explicit caller-provided rootfs archive and never installs a missing CLI.
+
 OpenCode ACP v1 supports text and image input but has no lossless structured
 schema field. The Smoke app therefore reports a typed unsupported error for
 OpenCode structured mode; it does not convert the request to prompt-only JSON.

@@ -138,10 +138,13 @@ mandatory authentication preflight before Codex generation. See the
 
 `AnyLanguageModel` is a normal official SwiftPM dependency with no patches or
 submodule. `Upstreams/iSH` is an `update=none` gitlink and is never initialized
-by a normal package build.
+by a normal package build. Agent CLI executables are consumer-owned runtime
+inputs, not repository dependencies.
 
 ```bash
 ./Scripts/verify-upstreams.sh
+./Scripts/verify-agent-cli-contracts.sh
+./Scripts/verify-smoke-agent-cli-fixtures.sh
 ./Scripts/prepare-ish-integration.sh   # explicit opt-in; applies the patch
 ./Scripts/build-ish-host.sh /absolute/output
 ./Scripts/verify-no-ish-linkage.sh
@@ -167,6 +170,8 @@ boot and complete a streamed guest-process round trip on an arm64 simulator:
 
 The rootfs is scoped to the generated smoke app and its simulator container; it
 is not added to source control or shared with the standalone iSH app.
+`Smoke/Fixtures/AgentCLI.env` records only test-only reproducibility pins; it
+does not make OpenCode, its guest libraries, or any rootfs a Core deliverable.
 
 ## Verification
 
@@ -176,6 +181,8 @@ swift test
 ./Scripts/typecheck-ios-smoke.sh
 ./Scripts/test-ios-smoke.sh
 ./Scripts/verify-upstreams.sh
+./Scripts/verify-agent-cli-contracts.sh
+./Scripts/verify-smoke-agent-cli-fixtures.sh
 ./Scripts/verify-no-ish-linkage.sh
 ```
 

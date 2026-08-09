@@ -1,14 +1,19 @@
 # Upstream maintenance
 
-`Upstreams.env` is the root version table. Updates are intentionally
-asymmetric.
+`Upstreams.env` contains only source and build dependencies owned by this
+repository. Updates are intentionally asymmetric.
 
 | Component | Integration | Current pin |
 | --- | --- | --- |
 | AnyLanguageModel | official SwiftPM URL, exact version, no patch | 0.9.0 / `f22b78e6b10f67e7d46c67dc59a8a35bc259fbce` |
 | MacPaw/OpenAI | CLI compatibility target only, exact version | 0.5.1 / `a532be89be9a30ec003e4ba0974a52a88d26fc6d` |
 | OpenMinis ish-arm64 | opt-in `update=none` submodule | `de124dd66124a15239cea1465164f74980ada245` |
-| OpenCode | external CLI; official ARM64 musl release in consumer fakefs | 1.18.15 / release asset SHA-256 in `Upstreams.env` |
+
+Agent CLI executables are not upstream package dependencies. Their protocol
+compatibility floor is recorded separately in `AgentCLIContracts.env`.
+`Smoke/Fixtures/AgentCLI.env` contains test-only binary/runtime pins used to
+reproduce opt-in Smoke rootfs validation; it is never included in the iSH
+source bundle or a Swift package product.
 
 ## AnyLanguageModel update
 
@@ -51,19 +56,28 @@ pin.
 ## OpenCode update
 
 OpenCode is not a SwiftPM dependency, submodule, or linked app component. Core
-speaks ACP stdio to an executable supplied by the consumer. The iSH smoke uses
-the official `opencode-linux-arm64-musl.tar.gz` asset and records its SHA-256 in
-`Upstreams.env`; the binary is never committed.
+speaks ACP stdio to an executable supplied by the consumer. The compatible ACP
+version belongs to `AgentCLIContracts.env`; it does not authorize Core to
+download, install, bundle, authenticate or update OpenCode.
 
-1. Verify the official release asset and update the minimum version plus full
-   SHA-256 together.
+The opt-in iSH Smoke may use the official `opencode-linux-arm64-musl.tar.gz`
+asset and pinned guest libraries from `Smoke/Fixtures/AgentCLI.env`. That
+manifest is test infrastructure only. The binary, libraries, rootfs and auth
+state are never committed or distributed by AIReasoningCore.
+
+1. Verify protocol compatibility and update `OPENCODE_MINIMUM_VERSION` in
+   `AgentCLIContracts.env` only after the Core ACP tests pass.
 2. Re-run the ACP delta, image, cancellation, malformed-wire and explicit
    structured-output rejection tests.
-3. For iSH, package the pinned Alpine ARM64 `libgcc` and `libstdc++` runtime
-   files recorded in `Upstreams.env`; do not substitute host libraries.
-4. Run `/usr/local/bin/opencode --version` and a real ACP generation inside the
-   app-owned iSH rootfs. Keep the previous pins if either fails.
-5. Never add an OpenCode-to-Codex/Claude fallback or silently replace ACP with
+3. Independently update the test-only version, official asset URL and hashes in
+   `Smoke/Fixtures/AgentCLI.env`; never substitute host libraries.
+4. The Smoke integrator supplies the verified rootfs. Run
+   `/usr/local/bin/opencode --version` and a real ACP generation inside it.
+   Keep the previous pins if either fails.
+5. Run `verify-agent-cli-contracts.sh` and
+   `verify-smoke-agent-cli-fixtures.sh` separately; neither script downloads
+   or installs a missing artifact.
+6. Never add an OpenCode-to-Codex/Claude fallback or silently replace ACP with
    the completed-part `run --format json` output.
 
 ## Local build prerequisites

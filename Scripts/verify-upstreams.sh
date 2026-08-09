@@ -58,10 +58,6 @@ resolved_macpaw_commit=$(resolve_tag \
 [ "$resolved_macpaw_commit" = "$MACPAW_OPENAI_COMMIT" ] ||
     fail "MacPaw/OpenAI tag resolves to '$resolved_macpaw_commit', expected '$MACPAW_OPENAI_COMMIT'"
 
-grep -Fq "minimumVersion: \"$OPENCODE_MINIMUM_VERSION\"" \
-    "$ROOT/Sources/AIReasoningCore/OpenCodeDriver.swift" ||
-    fail "OpenCodeDriver does not require verified version $OPENCODE_MINIMUM_VERSION"
-
 registered_url=$(git -C "$ROOT" config -f .gitmodules --get submodule.iSH.url)
 [ "$registered_url" = "$ISH_REMOTE" ] ||
     fail "iSH .gitmodules URL is '$registered_url', expected '$ISH_REMOTE'"
