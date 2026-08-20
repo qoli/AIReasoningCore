@@ -46,13 +46,22 @@ import Foundation
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let destination = applicationSupport.appendingPathComponent("AIReasoningiSH", isDirectory: true)
             .appendingPathComponent("\(manifest.identifier)-\(manifest.version)", isDirectory: true)
+        let workspace = applicationSupport.appendingPathComponent(
+            "MinimalHarnessWorkspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         let prepared = try ISHRootFileSystemPreparer().prepare(
             .init(
                 sourceDirectoryURL: source, identifier: manifest.identifier, version: manifest.version,
                 sha256: manifest.sha256), at: destination)
-        try ISHEmbeddedRuntime.shared.boot(.init(rootFileSystemURL: prepared, supervisorExecutableURL: supervisor))
+        try ISHEmbeddedRuntime.shared.boot(.init(
+            rootFileSystemURL: prepared,
+            supervisorExecutableURL: supervisor,
+            workspaceMount: .init(hostDirectoryURL: workspace)
+        ))
         recordSmokeStatus(.init(state: "booted", detail: prepared.path))
-        if ProcessInfo.processInfo.arguments.contains("--run-ish-bootstrap-smoke") {
+        if ProcessInfo.processInfo.arguments.contains("--run-minimal-harness-smoke") {
+            Task { await runMinimalHarnessSmoke() }
+        } else if ProcessInfo.processInfo.arguments.contains("--run-ish-bootstrap-smoke") {
             Task {
                 await runGuestCommandSmoke(
                     codexExecutablePath: manifest.codexExecutablePath,
@@ -60,6 +69,75 @@ import Foundation
                     openCodeProviderID: manifest.openCodeProviderID, openCodeBaseURL: manifest.openCodeBaseURL,
                     openCodeAPIKeyEnvironmentVariable: manifest.openCodeAPIKeyEnvironmentVariable)
             }
+        }
+    }
+
+    private static func runMinimalHarnessSmoke() async {
+        var phase = "configuration"
+        do {
+            let environment = ProcessInfo.processInfo.environment
+            guard let apiKey = environment["AIREASONING_DEEPSEEK_API_KEY"], !apiKey.isEmpty else {
+                throw SmokeFailure.missingMinimalHarnessAPIKey
+            }
+            let baseURL = URL(string: "https://api.deepseek.com/v1")!
+            let modelName = "deepseek-v4-flash"
+            let model = OpenAILanguageModel(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: modelName,
+                apiVariant: .chatCompletions
+            )
+            let sandbox = try ISHMinimalAgentSandbox()
+            let harness = MinimalHarness(model: model, sandbox: sandbox)
+            var options = GenerationOptions()
+            options[custom: OpenAILanguageModel.self] = .init(parallelToolCalls: false)
+
+            phase = "DeepSeek tool loop"
+            let response = try await harness.respond(
+                to: """
+                Complete these steps in order. You must use str_replace_editor to create \
+                /workspace/editor.txt containing exactly editor-ok. Then you must use bash \
+                to read that file and run: printf 'bash-ok' > /workspace/bash.txt. Do not \
+                create editor.txt with bash. After both tools succeed, reply exactly: \
+                DeepSeek iSH tools OK
+                """,
+                options: options
+            )
+
+            phase = "workspace verification"
+            let editorFile = try await sandbox.readTextFile(at: "/workspace/editor.txt")
+            let bashFile = try await sandbox.readTextFile(at: "/workspace/bash.txt")
+            let toolNames = harness.transcript.flatMap { entry -> [String] in
+                guard case .toolCalls(let calls) = entry else { return [] }
+                return calls.map(\.toolName)
+            }
+            guard editorFile.contents == "editor-ok",
+                  bashFile.contents == "bash-ok",
+                  toolNames.contains("str_replace_editor"),
+                  toolNames.contains("bash")
+            else {
+                throw SmokeFailure.minimalHarnessContract(
+                    tools: toolNames,
+                    editorContents: editorFile.contents,
+                    bashContents: bashFile.contents
+                )
+            }
+            recordSmokeStatus(.init(
+                state: "succeeded",
+                detail: "DeepSeek communication and iSH tools passed",
+                minimalHarness: .init(
+                    model: modelName,
+                    baseURL: baseURL.absoluteString,
+                    toolNames: toolNames,
+                    response: response.content,
+                    editorContents: editorFile.contents,
+                    bashContents: bashFile.contents
+                )
+            ))
+        } catch {
+            let detail = "\(phase): \(error.localizedDescription)"
+            bootError = detail
+            recordSmokeStatus(.init(state: "failed", detail: detail))
         }
     }
 
@@ -243,13 +321,30 @@ private struct SmokeStatus: Codable {
     let detail: String
     let codex: CodexSmokeStatus?
     let openCode: OpenCodeSmokeStatus?
+    let minimalHarness: MinimalHarnessSmokeStatus?
 
-    init(state: String, detail: String, codex: CodexSmokeStatus? = nil, openCode: OpenCodeSmokeStatus? = nil) {
+    init(
+        state: String,
+        detail: String,
+        codex: CodexSmokeStatus? = nil,
+        openCode: OpenCodeSmokeStatus? = nil,
+        minimalHarness: MinimalHarnessSmokeStatus? = nil
+    ) {
         self.state = state
         self.detail = detail
         self.codex = codex
         self.openCode = openCode
+        self.minimalHarness = minimalHarness
     }
+}
+
+private struct MinimalHarnessSmokeStatus: Codable {
+    let model: String
+    let baseURL: String
+    let toolNames: [String]
+    let response: String
+    let editorContents: String
+    let bashContents: String
 }
 
 private struct CodexSmokeStatus: Codable {
@@ -284,6 +379,8 @@ private enum SmokeFailure: Error, LocalizedError {
     case codexAppServerInitialize(exitCode: Int32?, output: String)
     case guestCommand(executablePath: String, exitCode: Int32?, output: String)
     case incompleteOpenCodeProviderConfiguration
+    case missingMinimalHarnessAPIKey
+    case minimalHarnessContract(tools: [String], editorContents: String, bashContents: String)
 
     var errorDescription: String? {
         switch self {
@@ -296,6 +393,10 @@ private enum SmokeFailure: Error, LocalizedError {
             "Embedded guest command \(executablePath) failed (exit \(exitCode.map(String.init) ?? "missing")): \(output)"
         case .incompleteOpenCodeProviderConfiguration:
             "OpenCode provider ID, base URL, API-key environment variable, and launch environment secret are required together"
+        case .missingMinimalHarnessAPIKey:
+            "The DeepSeek API key is missing from the process environment"
+        case .minimalHarnessContract(let tools, let editorContents, let bashContents):
+            "Minimal harness contract failed (tools: \(tools), editor: \(editorContents), bash: \(bashContents))"
         }
     }
 }

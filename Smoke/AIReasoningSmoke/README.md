@@ -139,6 +139,15 @@ directory digest used by `ISHRootFileSystemPreparer`, inspects the linked Mach-O
 for the host/kernel symbols, launches the arm64 simulator app, and requires a
 successful guest `/bin/cat` round trip from the app container.
 
+The host target also has a physical-device DeepSeek harness gate. Supply the
+credential only through the launch environment and pass
+`--run-minimal-harness-smoke`. The bundled rootfs must contain `/bin/bash`.
+The gate calls the configured DeepSeek model from Swift, requires the model to
+invoke `str_replace_editor` followed by `bash`, then verifies both resulting
+files through the shared `/workspace` mount. Its status JSON records the model,
+base URL, tool names, response, and fixed test-file contents, but never the API
+key or HTTP headers.
+
 The non-interactive script passes Xcode's `-skipMacroValidation` flag for the
 AnyLanguageModel `@Generable` macro. This is bounded by the repository's exact
 0.9.0/full-SHA pin and `verify-upstreams.sh`. When opening the project

@@ -4,6 +4,7 @@
 #include "AIReasoningiSHRuntime.h"
 
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -21,9 +22,17 @@ static size_t written_count;
 static int32_t signals[16];
 static size_t signal_count;
 static fixture_session_t *active_session;
+static char workspace_host_path[4096];
+static char workspace_guest_path[4096];
+static int workspace_read_only;
 
 static int fixture_boot(const ish_embed_boot_opts_t *opts, ish_embed_instance_t **instance) {
     if (opts == NULL || instance == NULL) return ISH_ERR_INVALID_ARG;
+    snprintf(workspace_host_path, sizeof(workspace_host_path), "%s",
+             opts->workspace_host_path ? opts->workspace_host_path : "");
+    snprintf(workspace_guest_path, sizeof(workspace_guest_path), "%s",
+             opts->workspace_guest_path ? opts->workspace_guest_path : "");
+    workspace_read_only = opts->workspace_read_only;
     *instance = (ish_embed_instance_t *)(uintptr_t)1;
     return ISH_OK;
 }
@@ -184,3 +193,7 @@ int32_t ARISHFixtureSignalAtIndex(size_t index) {
     pthread_mutex_unlock(&lock);
     return value;
 }
+
+const char *ARISHFixtureWorkspaceHostPath(void) { return workspace_host_path; }
+const char *ARISHFixtureWorkspaceGuestPath(void) { return workspace_guest_path; }
+int ARISHFixtureWorkspaceReadOnly(void) { return workspace_read_only; }

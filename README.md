@@ -42,6 +42,36 @@ AnyLanguageModel `Transcript.ImageSegment`; structured generation uses
 generation deterministically from `LanguageModelSession.transcript`; its
 subprocess conversation is always ephemeral.
 
+## Minimal Swift harness with iSH
+
+`MinimalHarness` is the small agent mode inspired by DeepSeek Harness. Swift
+owns the model session and exposes exactly two tools: `bash` and
+`str_replace_editor`. There is no approval tool or permission-policy layer.
+The security boundary is the embedded iSH instance itself; commands, including
+network commands, run inside that sandbox.
+
+Boot iSH with one explicit shared workspace, then give its sandbox to the
+harness:
+
+```swift
+try ISHEmbeddedRuntime.shared.boot(.init(
+    rootFileSystemURL: writableRootFS,
+    supervisorExecutableURL: supervisor,
+    workspaceMount: .init(hostDirectoryURL: projectDirectory)
+))
+
+let sandbox = try ISHMinimalAgentSandbox()
+let harness = MinimalHarness(model: model, sandbox: sandbox)
+let response = try await harness.respond(to: "Inspect and repair the project")
+```
+
+iSH sees the directory at `/workspace`; the Swift editor resolves only paths
+under that same bind mount. Editor writes use content versions so an external
+change cannot be overwritten silently. A missing mount, path escape, invalid
+UTF-8 file, ambiguous replacement, or concurrent modification fails
+explicitly. The implementation does not fall back to macOS process execution
+or another filesystem.
+
 Codex requires CLI 0.146.0 or newer. Claude requires Claude Code 2.1.85 or
 newer. OpenCode requires 1.18.15 or newer and uses ACP stdio for real text
 deltas and base64 image blocks. ACP v1 has no lossless structured-output field,

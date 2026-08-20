@@ -8,10 +8,10 @@
  * All functions return 0 on success or a negative iSH errno-like value.
  * Strings are null-terminated UTF-8.
  *
- * Threading: ish_ffi_mount_fakefs / ish_ffi_become_init / ish_ffi_install_pipe_stdio /
- * ish_ffi_install_executable / ish_ffi_chdir / ish_ffi_execve_path MUST run on the
- * thread that will be promoted to PID1 (typically the kernel pthread before
- * task_run_current() starts the loop).
+ * Threading: ish_ffi_mount_fakefs / ish_ffi_bind_mount / ish_ffi_become_init /
+ * ish_ffi_install_pipe_stdio / ish_ffi_install_executable / ish_ffi_chdir /
+ * ish_ffi_execve_path MUST run on the thread that will be promoted to PID1
+ * (typically the kernel pthread before task_run_current() starts the loop).
  *
  * ish_ffi_task_start spawns the dedicated kernel pthread that runs
  * task_run_current() forever. After that, the host must communicate
@@ -32,6 +32,11 @@ extern "C" {
 /* Mount fakefs at the root. rootfs_path is the host path to the fakefs
  * directory (the parent of data/ and the meta.db sqlite file). */
 int ish_ffi_mount_fakefs(const char *rootfs_path);
+
+/* Expose one host path through fakefs at an absolute guest path. */
+int ish_ffi_bind_mount(const char *guest_path,
+                       const char *host_path,
+                       int read_only);
 
 /* Become PID 1 (construct task, install signal handlers). */
 int ish_ffi_become_init(void);

@@ -14,5 +14,8 @@ size_t ARISHFixtureWrittenByteCount(void);
 size_t ARISHFixtureCountOfByte(uint8_t byte);
 size_t ARISHFixtureSignalCount(void);
 int32_t ARISHFixtureSignalAtIndex(size_t index);
+const char *ARISHFixtureWorkspaceHostPath(void);
+const char *ARISHFixtureWorkspaceGuestPath(void);
+int ARISHFixtureWorkspaceReadOnly(void);
 
 #endif

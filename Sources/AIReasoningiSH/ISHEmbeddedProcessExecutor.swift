@@ -9,6 +9,7 @@ public enum ISHEmbeddedRuntimeError: Error, LocalizedError, Sendable, Equatable 
     case hostRuntimeAlreadyRegistered
     case invalidRootFileSystem(String)
     case invalidSupervisor(String)
+    case invalidWorkspace(String)
     case alreadyBooted
     case notBooted
     case bootFailed(code: Int32, message: String)
@@ -24,6 +25,8 @@ public enum ISHEmbeddedRuntimeError: Error, LocalizedError, Sendable, Equatable 
             "The writable iSH root filesystem is invalid: \(path)"
         case .invalidSupervisor(let path):
             "The iSH guest supervisor is invalid: \(path)"
+        case .invalidWorkspace(let message):
+            "The iSH workspace mount is invalid: \(message)"
         case .alreadyBooted:
             "The embedded iSH runtime is already booted"
         case .notBooted:
@@ -33,6 +36,22 @@ public enum ISHEmbeddedRuntimeError: Error, LocalizedError, Sendable, Equatable 
         case .operationFailed(let operation, let code, let message):
             "Embedded iSH \(operation) failed (\(code)): \(message)"
         }
+    }
+}
+
+public struct ISHWorkspaceMountConfiguration: Sendable, Equatable {
+    public let hostDirectoryURL: URL
+    public let guestDirectoryPath: String
+    public let isReadOnly: Bool
+
+    public init(
+        hostDirectoryURL: URL,
+        guestDirectoryPath: String = "/workspace",
+        isReadOnly: Bool = false
+    ) {
+        self.hostDirectoryURL = hostDirectoryURL
+        self.guestDirectoryPath = guestDirectoryPath
+        self.isReadOnly = isReadOnly
     }
 }
 
@@ -46,17 +65,20 @@ public struct ISHEmbeddedRuntimeConfiguration: Sendable, Equatable {
     public let supervisorExecutableURL: URL
     public let initialWorkingDirectory: String
     public let supervisorGuestPath: String
+    public let workspaceMount: ISHWorkspaceMountConfiguration?
 
     public init(
         rootFileSystemURL: URL,
         supervisorExecutableURL: URL,
         initialWorkingDirectory: String = "/",
-        supervisorGuestPath: String = "/sbin/ishsv"
+        supervisorGuestPath: String = "/sbin/ishsv",
+        workspaceMount: ISHWorkspaceMountConfiguration? = nil
     ) {
         self.rootFileSystemURL = rootFileSystemURL
         self.supervisorExecutableURL = supervisorExecutableURL
         self.initialWorkingDirectory = initialWorkingDirectory
         self.supervisorGuestPath = supervisorGuestPath
+        self.workspaceMount = workspaceMount
     }
 }
 
@@ -68,6 +90,7 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
 
     private let lock = NSLock()
     private var instance: OpaquePointer?
+    private var activeConfiguration: ISHEmbeddedRuntimeConfiguration?
 
     public init() {}
 
@@ -99,6 +122,10 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
         lock.withLock { instance != nil }
     }
 
+    public var workspaceMount: ISHWorkspaceMountConfiguration? {
+        lock.withLock { activeConfiguration?.workspaceMount }
+    }
+
     public func boot(_ configuration: ISHEmbeddedRuntimeConfiguration) throws {
         guard Self.isHostRuntimeRegistered else {
             throw ISHEmbeddedRuntimeError.hostRuntimeNotLinked
@@ -123,19 +150,28 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
             throw ISHEmbeddedRuntimeError.invalidSupervisor(supervisorPath)
         }
 
+        try validateWorkspace(configuration.workspaceMount)
+
         var booted: OpaquePointer?
         let status: Int32 = rootPath.withCString { root in
             configuration.initialWorkingDirectory.withCString { workdir in
                 configuration.supervisorGuestPath.withCString { guestPath in
                     supervisor.withUnsafeBytes { bytes in
-                        var options = ish_embed_boot_opts_t()
-                        options.rootfs_path = root
-                        options.workdir = workdir
-                        options.supervisor_guest_path = guestPath
-                        options.supervisor_bytes = bytes.bindMemory(to: UInt8.self).baseAddress
-                        options.supervisor_length = bytes.count
-                        options.kernel_log_fd = -1
-                        return ARISHRuntimeBoot(&options, &booted)
+                        withOptionalCString(configuration.workspaceMount?.hostDirectoryURL.path) { workspaceHost in
+                            withOptionalCString(configuration.workspaceMount?.guestDirectoryPath) { workspaceGuest in
+                                var options = ish_embed_boot_opts_t()
+                                options.rootfs_path = root
+                                options.workdir = workdir
+                                options.supervisor_guest_path = guestPath
+                                options.supervisor_bytes = bytes.bindMemory(to: UInt8.self).baseAddress
+                                options.supervisor_length = bytes.count
+                                options.kernel_log_fd = -1
+                                options.workspace_host_path = workspaceHost
+                                options.workspace_guest_path = workspaceGuest
+                                options.workspace_read_only = configuration.workspaceMount?.isReadOnly == true ? 1 : 0
+                                return ARISHRuntimeBoot(&options, &booted)
+                            }
+                        }
                     }
                 }
             }
@@ -146,7 +182,10 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
                 message: runtimeErrorString(status)
             )
         }
-        lock.withLock { instance = booted }
+        lock.withLock {
+            instance = booted
+            activeConfiguration = configuration
+        }
     }
 
     public func shutdown(gracePeriod: Duration = .seconds(2)) throws {
@@ -161,7 +200,10 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
                 message: runtimeErrorString(status)
             )
         }
-        lock.withLock { instance = nil }
+        lock.withLock {
+            instance = nil
+            activeConfiguration = nil
+        }
     }
 
     fileprivate func requireInstance() throws -> OpaquePointer {
@@ -169,6 +211,29 @@ public final class ISHEmbeddedRuntime: @unchecked Sendable {
             throw ISHEmbeddedRuntimeError.notBooted
         }
         return instance
+    }
+
+    private func validateWorkspace(_ workspace: ISHWorkspaceMountConfiguration?) throws {
+        guard let workspace else { return }
+        let hostPath = workspace.hostDirectoryURL.path
+        var isDirectory: ObjCBool = false
+        guard workspace.hostDirectoryURL.isFileURL,
+              FileManager.default.fileExists(atPath: hostPath, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            throw ISHEmbeddedRuntimeError.invalidWorkspace(
+                "host directory does not exist: \(hostPath)"
+            )
+        }
+        let guestPath = workspace.guestDirectoryPath
+        let components = guestPath.split(separator: "/", omittingEmptySubsequences: false)
+        guard guestPath.hasPrefix("/"), guestPath != "/", !guestPath.hasSuffix("/"),
+              !components.contains("."), !components.contains("..")
+        else {
+            throw ISHEmbeddedRuntimeError.invalidWorkspace(
+                "guest path must be a normalized absolute non-root path: \(guestPath)"
+            )
+        }
     }
 }
 
@@ -454,6 +519,14 @@ private func runtimeErrorString(_ status: Int32) -> String {
         return "unknown error"
     }
     return String(cString: message)
+}
+
+private func withOptionalCString<Result>(
+    _ value: String?,
+    _ body: (UnsafePointer<CChar>?) throws -> Result
+) rethrows -> Result {
+    guard let value else { return try body(nil) }
+    return try value.withCString(body)
 }
 
 private func withCStringArray<Result>(

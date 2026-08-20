@@ -442,6 +442,18 @@ int ish_embed_boot(const ish_embed_boot_opts_t *opts,
     if ((err = ish_ffi_mount_fakefs(opts->rootfs_path)) < 0) {
         goto fail; /* err is already negative; map below */
     }
+    if ((opts->workspace_host_path == NULL) !=
+        (opts->workspace_guest_path == NULL)) {
+        err = ISH_ERR_INVALID_ARG;
+        goto fail;
+    }
+    if (opts->workspace_host_path != NULL &&
+        (err = ish_ffi_bind_mount(opts->workspace_guest_path,
+                                  opts->workspace_host_path,
+                                  opts->workspace_read_only)) < 0) {
+        err = ISH_ERR_MOUNT;
+        goto fail;
+    }
     if ((err = ish_ffi_become_init()) < 0) goto fail;
     if ((err = ish_ffi_create_devices()) < 0) goto fail;
 

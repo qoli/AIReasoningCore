@@ -34,6 +34,9 @@
  * Avoid kernel/calls.h directly; we forward-decl the few symbols we need. */
 #include "misc.h"
 #include "fs/fd.h"
+#define ISH_INTERNAL
+#include "fs/fake.h"
+#undef ISH_INTERNAL
 #include "fs/dev.h"
 #include "fs/devices.h"
 #include "fs/path.h"
@@ -85,6 +88,15 @@ int ish_ffi_mount_fakefs(const char *rootfs_path) {
     int n = snprintf(buf, sizeof(buf), "%s/data", rootfs_path);
     if (n <= 0 || (size_t)n >= sizeof(buf)) return -ENAMETOOLONG;
     return mount_root(&fakefs, buf);
+}
+
+int ish_ffi_bind_mount(const char *guest_path,
+                       const char *host_path,
+                       int read_only) {
+    if (!guest_path || !guest_path[0] || !host_path || !host_path[0]) {
+        return -EINVAL;
+    }
+    return fakefs_bind_mount(guest_path, host_path, read_only != 0);
 }
 
 /* ------------------------------------------------------------------ *

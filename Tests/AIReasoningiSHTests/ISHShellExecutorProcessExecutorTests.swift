@@ -13,6 +13,10 @@ struct ISHEmbeddedProcessExecutorTests {
         let runtime = ISHEmbeddedRuntime()
         let executor = ISHEmbeddedProcessExecutor(runtime: runtime)
 
+        #expect(throws: ISHEmbeddedRuntimeError.notBooted) {
+            try ISHMinimalAgentSandbox(runtime: runtime)
+        }
+
         #expect(
             !executor.isExecutableAvailable(
                 at: URL(fileURLWithPath: "/usr/local/bin/codex")
@@ -22,11 +26,45 @@ struct ISHEmbeddedProcessExecutorTests {
         #expect(ARISHFixtureInstall())
         let fixture = try makeBootFixture()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let workspace = fixture.root.appendingPathComponent("workspace", isDirectory: true)
+        try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
         try runtime.boot(.init(
             rootFileSystemURL: fixture.root,
-            supervisorExecutableURL: fixture.supervisor
+            supervisorExecutableURL: fixture.supervisor,
+            workspaceMount: .init(hostDirectoryURL: workspace)
         ))
+        #expect(String(cString: ARISHFixtureWorkspaceHostPath()) == workspace.path)
+        #expect(String(cString: ARISHFixtureWorkspaceGuestPath()) == "/workspace")
+        #expect(ARISHFixtureWorkspaceReadOnly() == 0)
         #expect(executor.isExecutableAvailable(at: URL(fileURLWithPath: "/usr/local/bin/codex")))
+
+        let sandbox = try ISHMinimalAgentSandbox(runtime: runtime)
+        try await sandbox.createTextFile(at: "/workspace/shared.txt", contents: "before")
+        let before = try await sandbox.readTextFile(at: "/workspace/shared.txt")
+        #expect(before.contents == "before")
+        #expect(try String(contentsOf: workspace.appendingPathComponent("shared.txt")) == "before")
+        try await sandbox.replaceTextFile(
+            at: "/workspace/shared.txt",
+            expectedVersion: before.version,
+            contents: "after"
+        )
+        #expect(try String(contentsOf: workspace.appendingPathComponent("shared.txt")) == "after")
+        let stale = try await sandbox.readTextFile(at: "/workspace/shared.txt")
+        try "external change".write(
+            to: workspace.appendingPathComponent("shared.txt"),
+            atomically: true,
+            encoding: .utf8
+        )
+        await #expect(throws: MinimalAgentSandboxError.concurrentModification("/workspace/shared.txt")) {
+            try await sandbox.replaceTextFile(
+                at: "/workspace/shared.txt",
+                expectedVersion: stale.version,
+                contents: "must not win"
+            )
+        }
+        await #expect(throws: MinimalAgentSandboxError.pathOutsideWorkspace("/workspace/../escape")) {
+            _ = try await sandbox.fileInfo(at: "/workspace/../escape")
+        }
 
         let session = try await executor.start(request())
         let binary = Data((0..<131_072).map { UInt8($0 % 251) })

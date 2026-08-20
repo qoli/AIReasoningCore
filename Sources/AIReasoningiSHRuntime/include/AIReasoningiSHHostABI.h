@@ -68,6 +68,9 @@ typedef struct ish_embed_boot_opts {
     const uint8_t *supervisor_bytes;    /* required statically-linked guest supervisor ELF                 */
     size_t supervisor_length;
     int kernel_log_fd;                  /* host fd that receives iSH printk; -1 to send to stderr         */
+    const char *workspace_host_path;    /* optional host directory exposed inside the guest               */
+    const char *workspace_guest_path;   /* required with workspace_host_path; e.g. "/workspace"          */
+    int workspace_read_only;            /* nonzero mounts the workspace read-only                         */
     int reserved_flags;
 } ish_embed_boot_opts_t;
 
