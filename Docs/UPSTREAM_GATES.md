@@ -45,14 +45,12 @@ sets `assetIDs` to an empty array. Provider assets are safely written to
 `AssetStore`, but they cannot be linked into that transcript entry without an
 upstream contract change.
 
-## pi-ai-swift distribution and generation
+## pi-ai-swift generation
 
-The current sibling checkout has no remote or version tag, so its local package
-reference is not publishable. It also has no concrete generation runtime. Before
-live provider acceptance:
+The distribution gate is resolved: AIReasoningCore pins the public
+`qoli/pi-ai-swift` `0.1.0` release. That release still has no concrete generation
+runtime. Before live provider acceptance:
 
-1. publish and tag `pi-ai-swift`;
-2. replace the sibling path dependency with an exact or bounded version;
-3. implement at least one concrete `ProviderRuntime` generation adapter;
-4. verify text, structured output, image input, tool continuation, cancellation,
+1. implement at least one concrete `ProviderRuntime` generation adapter;
+2. verify text, structured output, image input, tool continuation, cancellation,
    credential refresh and asset events through an iOS Simulator app.

@@ -30,23 +30,14 @@ Browser behavior is injected by the app through `BrowserOperator`.
 
 ## Development setup
 
-Until `pi-ai-swift` has a remote and version tag, both repositories must be
-siblings:
-
-```text
-Github/
-├── AIReasoningCore/
-└── pi-ai-swift/
-```
-
-Then run:
+Dependencies are pinned through Swift Package Manager. Run:
 
 ```bash
 swift test
 ```
 
-The sibling dependency is a development-only publication gate. Do not publish
-AIReasoningCore while `Package.swift` uses `.package(path: "../pi-ai-swift")`.
+`pi-ai-swift` is pinned to its public `0.1.0` release. Updating that dependency
+requires its own compatibility review and verification.
 
 ## Provider runtime status
 

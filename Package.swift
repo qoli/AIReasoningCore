@@ -17,8 +17,10 @@ let package = Package(
       url: "https://github.com/huggingface/AnyLanguageModel.git",
       exact: "0.9.0"
     ),
-    // Development dependency until pi-ai-swift has a remote and version tag.
-    .package(path: "../pi-ai-swift"),
+    .package(
+      url: "https://github.com/qoli/pi-ai-swift.git",
+      exact: "0.1.0"
+    ),
   ],
   targets: [
     .target(

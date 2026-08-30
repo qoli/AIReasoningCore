@@ -14,7 +14,8 @@ AnyLanguageModel 0.9.0
   Its license remains authoritative for that component.
 
 pi-ai-swift
-  Source: local Swift package pending a public remote and version tag
+  Source: https://github.com/qoli/pi-ai-swift
+  Version: 0.1.0
   License: MIT
   Copyright (c) 2026 pi-ai-swift contributors
   Integrated as a Swift Package Manager dependency without source duplication.
