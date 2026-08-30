@@ -16,6 +16,8 @@
 		A10000000000000000000026 /* AnyLanguageModel in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000061 /* AnyLanguageModel */; };
 		A10000000000000000000027 /* PiAIProviderRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000062 /* PiAIProviderRuntime */; };
 		A10000000000000000000028 /* SmokeSessionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* SmokeSessionProbe.swift */; };
+		A10000000000000000000029 /* LiveProviderModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000017 /* LiveProviderModels.swift */; };
+		A1000000000000000000002A /* LiveProviderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* LiveProviderViewModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +28,9 @@
 		A10000000000000000000014 /* SmokeHTTPProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeHTTPProtocol.swift; sourceTree = "<group>"; };
 		A10000000000000000000015 /* AIReasoningSmoke.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIReasoningSmoke.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000016 /* SmokeSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeSessionProbe.swift; sourceTree = "<group>"; };
+		A10000000000000000000017 /* LiveProviderModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveProviderModels.swift; sourceTree = "<group>"; };
+		A10000000000000000000018 /* LiveProviderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveProviderViewModel.swift; sourceTree = "<group>"; };
+		A10000000000000000000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,6 +64,9 @@
 				A10000000000000000000013 /* SmokeBrowserHost.swift */,
 				A10000000000000000000014 /* SmokeHTTPProtocol.swift */,
 				A10000000000000000000016 /* SmokeSessionProbe.swift */,
+				A10000000000000000000017 /* LiveProviderModels.swift */,
+				A10000000000000000000018 /* LiveProviderViewModel.swift */,
+				A10000000000000000000019 /* Info.plist */,
 			);
 			path = AIReasoningSmoke;
 			sourceTree = "<group>";
@@ -155,6 +163,8 @@
 				A10000000000000000000023 /* SmokeBrowserHost.swift in Sources */,
 				A10000000000000000000024 /* SmokeHTTPProtocol.swift in Sources */,
 				A10000000000000000000028 /* SmokeSessionProbe.swift in Sources */,
+				A10000000000000000000029 /* LiveProviderModels.swift in Sources */,
+				A1000000000000000000002A /* LiveProviderViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -205,11 +215,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = WQY45CL427;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "AIReasoning Smoke";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = NO;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AIReasoningSmoke/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -232,11 +239,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = WQY45CL427;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "AIReasoning Smoke";
-				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = NO;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AIReasoningSmoke/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -297,7 +301,7 @@
 			repositoryURL = "https://github.com/qoli/pi-ai-swift.git";
 			requirement = {
 				kind = exactVersion;
-				version = 0.1.0;
+				version = 0.2.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

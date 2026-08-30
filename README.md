@@ -51,18 +51,17 @@ Dependencies are pinned through Swift Package Manager. Run:
 swift test
 ```
 
-`pi-ai-swift` is pinned to its public `0.1.0` release. Updating that dependency
-requires its own compatibility review and verification.
+`pi-ai-swift` is pinned to its public `0.2.0` release. Updating that dependency
+requires its own compatibility review, release, and verification.
 
 ## Provider runtime status
 
 `PiAILanguageModel` accepts an injected `PiAIProviderRuntime.ProviderRuntime`.
 The adapter, mapping, structured output, non-stream tool loop, persistence and
-tooling are implemented and tested with a deterministic runtime.
-
-The current `pi-ai-swift` checkout does not yet ship a concrete live generation
-runtime. Consequently, AIReasoningCore does not claim live provider generation.
-Codex OAuth availability in `pi-ai-swift` is not evidence of generation support.
+tooling are verified with a deterministic runtime. The iOS Smoke app also has a
+manual Live Provider Console for pi-ai-swift catalog, authorization, streaming,
+function-call, image-input, and image-output acceptance. Live results remain
+environmental evidence and do not replace deterministic fixtures.
 
 ## Known AnyLanguageModel 0.9.0 limits
 

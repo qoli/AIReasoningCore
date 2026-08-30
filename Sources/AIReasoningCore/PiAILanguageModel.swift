@@ -9,15 +9,30 @@ public struct PiAILanguageModel: LanguageModel {
     public var reasoningEffort: String?
     public var providerOptions: [String: PiAIProviderRuntime.JSONValue]
     public var maximumToolIterations: Int
+    public var outputModality: ProviderOutputModality
+    public var sessionID: String?
+    public var cacheRetention: ProviderCacheRetention
+    public var serviceTier: String?
+    public var toolChoice: PiAIProviderRuntime.JSONValue?
 
     public init(
       reasoningEffort: String? = nil,
       providerOptions: [String: PiAIProviderRuntime.JSONValue] = [:],
-      maximumToolIterations: Int = 8
+      maximumToolIterations: Int = 8,
+      outputModality: ProviderOutputModality = .text,
+      sessionID: String? = nil,
+      cacheRetention: ProviderCacheRetention = .short,
+      serviceTier: String? = nil,
+      toolChoice: PiAIProviderRuntime.JSONValue? = nil
     ) {
       self.reasoningEffort = reasoningEffort
       self.providerOptions = providerOptions
       self.maximumToolIterations = maximumToolIterations
+      self.outputModality = outputModality
+      self.sessionID = sessionID
+      self.cacheRetention = cacheRetention
+      self.serviceTier = serviceTier
+      self.toolChoice = toolChoice
     }
   }
 
@@ -191,7 +206,7 @@ public struct PiAILanguageModel: LanguageModel {
                 .invalidProviderResponse,
                 "provider emitted responseStarted more than once"
               )
-            case .reasoningDelta, .usage:
+            case .reasoningDelta, .reasoningSignatureDelta, .usage:
               break
             }
           }
@@ -288,7 +303,7 @@ public struct PiAILanguageModel: LanguageModel {
           )
         }
         _ = try await assets.save(asset)
-      case .usage, .reasoningDelta:
+      case .usage, .reasoningDelta, .reasoningSignatureDelta:
         break
       case .completed(let reason):
         try ProviderMapper.validateFinish(reason)
@@ -497,7 +512,12 @@ private enum ProviderMapper {
       temperature: options.temperature,
       reasoningEffort: custom.reasoningEffort,
       responseSchema: type == String.self ? nil : try encodedJSONValue(type.generationSchema),
-      providerOptions: custom.providerOptions
+      providerOptions: custom.providerOptions,
+      outputModality: custom.outputModality,
+      sessionID: custom.sessionID,
+      cacheRetention: custom.cacheRetention,
+      serviceTier: custom.serviceTier,
+      toolChoice: custom.toolChoice
     )
   }
 

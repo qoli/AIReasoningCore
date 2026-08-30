@@ -143,6 +143,67 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(response.content, "done")
   }
 
+  func testCustomGenerationOptionsMapToProviderRequest() async throws {
+    let recorder = RequestRecorder()
+    let runtime = FakeRuntime { request in
+      Task { await recorder.record(request) }
+      return responseEvents(for: request, text: "configured")
+    }
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+    )
+    var options = GenerationOptions()
+    options.maximumResponseTokens = 321
+    options.temperature = 0.25
+    options[custom: PiAILanguageModel.self] = .init(
+      reasoningEffort: "high",
+      providerOptions: ["debug": .bool(true)],
+      outputModality: .image,
+      sessionID: "session-1",
+      cacheRetention: .long,
+      serviceTier: "priority",
+      toolChoice: .object([
+        "type": .string("function"),
+        "name": .string("echo"),
+      ])
+    )
+
+    _ = try await session.respond(to: "Configure", options: options)
+    let requests = await recorder.requests
+    let request = try XCTUnwrap(requests.first)
+
+    XCTAssertEqual(request.options.maximumOutputTokens, 321)
+    XCTAssertEqual(request.options.temperature, 0.25)
+    XCTAssertEqual(request.options.reasoningEffort, "high")
+    XCTAssertEqual(request.options.providerOptions["debug"], .bool(true))
+    XCTAssertEqual(request.options.outputModality, .image)
+    XCTAssertEqual(request.options.sessionID, "session-1")
+    XCTAssertEqual(request.options.cacheRetention, .long)
+    XCTAssertEqual(request.options.serviceTier, "priority")
+    XCTAssertEqual(
+      request.options.toolChoice,
+      .object(["type": .string("function"), "name": .string("echo")])
+    )
+  }
+
+  func testReasoningSignatureDeltaIsAcceptedAsOpaqueMetadata() async throws {
+    let runtime = FakeRuntime { request in
+      [
+        .responseStarted(metadata(for: request)),
+        .reasoningSignatureDelta("opaque-signature"),
+        .textDelta("answer"),
+        .completed(.stop),
+      ]
+    }
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+    )
+
+    let response = try await session.respond(to: "Reason")
+
+    XCTAssertEqual(response.content, "answer")
+  }
+
   func testImageTranscriptMapsToProviderImage() async throws {
     let recorder = RequestRecorder()
     let runtime = FakeRuntime { request in

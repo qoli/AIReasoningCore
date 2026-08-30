@@ -28,7 +28,8 @@ interface around it.
 ## Ownership
 
 - `PiAILanguageModel` maps `Transcript`, tools, schemas and generation options to
-  pi-ai-swift DTOs.
+  pi-ai-swift DTOs, including output modality, reasoning effort, session and
+  cache affinity, service tier, provider options, and native tool choice.
 - Non-streaming provider tool calls are executed through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
 - `ConversationStore` atomically persists `Transcript` plus opaque provider state.

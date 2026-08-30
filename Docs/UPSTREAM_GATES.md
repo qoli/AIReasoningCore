@@ -45,12 +45,16 @@ sets `assetIDs` to an empty array. Provider assets are safely written to
 `AssetStore`, but they cannot be linked into that transcript entry without an
 upstream contract change.
 
-## pi-ai-swift generation
+## pi-ai-swift release distribution
 
-The distribution gate is resolved: AIReasoningCore pins the public
-`qoli/pi-ai-swift` `0.1.0` release. That release still has no concrete generation
-runtime. Before live provider acceptance:
+The concrete built-in provider runtime now supplies catalog, authorization, wire
+protocol, streaming, tool continuation, and asset events to the Smoke app. The
+manual live console can exercise those capabilities without adding provider
+conditionals to AIReasoningCore.
 
-1. implement at least one concrete `ProviderRuntime` generation adapter;
-2. verify text, structured output, image input, tool continuation, cancellation,
-   credential refresh and asset events through an iOS Simulator app.
+The distribution gate is resolved by the independently verified public
+pi-ai-swift `0.2.0` tag. Both AIReasoningCore package manifests pin that exact
+version, with no revision pin or local override. Deterministic acceptance has
+also been rerun against the remote tag. Live provider results remain separate
+environmental evidence because credentials, quota, and provider service state
+cannot be deterministic release inputs.
