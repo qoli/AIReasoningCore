@@ -1,0 +1,322 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000020 /* AIReasoningSmokeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AIReasoningSmokeApp.swift */; };
+		A10000000000000000000021 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* ContentView.swift */; };
+		A10000000000000000000022 /* SmokeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* SmokeViewModel.swift */; };
+		A10000000000000000000023 /* SmokeBrowserHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* SmokeBrowserHost.swift */; };
+		A10000000000000000000024 /* SmokeHTTPProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* SmokeHTTPProtocol.swift */; };
+		A10000000000000000000025 /* AIReasoningCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000060 /* AIReasoningCore */; };
+		A10000000000000000000026 /* AnyLanguageModel in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000061 /* AnyLanguageModel */; };
+		A10000000000000000000027 /* PiAIProviderRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000062 /* PiAIProviderRuntime */; };
+		A10000000000000000000028 /* SmokeSessionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* SmokeSessionProbe.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A10000000000000000000010 /* AIReasoningSmokeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIReasoningSmokeApp.swift; sourceTree = "<group>"; };
+		A10000000000000000000011 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A10000000000000000000012 /* SmokeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeViewModel.swift; sourceTree = "<group>"; };
+		A10000000000000000000013 /* SmokeBrowserHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeBrowserHost.swift; sourceTree = "<group>"; };
+		A10000000000000000000014 /* SmokeHTTPProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeHTTPProtocol.swift; sourceTree = "<group>"; };
+		A10000000000000000000015 /* AIReasoningSmoke.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIReasoningSmoke.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000016 /* SmokeSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeSessionProbe.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000031 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000025 /* AIReasoningCore in Frameworks */,
+				A10000000000000000000026 /* AnyLanguageModel in Frameworks */,
+				A10000000000000000000027 /* PiAIProviderRuntime in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A10000000000000000000003 = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000004 /* AIReasoningSmoke */,
+				A10000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000004 /* AIReasoningSmoke */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000010 /* AIReasoningSmokeApp.swift */,
+				A10000000000000000000011 /* ContentView.swift */,
+				A10000000000000000000012 /* SmokeViewModel.swift */,
+				A10000000000000000000013 /* SmokeBrowserHost.swift */,
+				A10000000000000000000014 /* SmokeHTTPProtocol.swift */,
+				A10000000000000000000016 /* SmokeSessionProbe.swift */,
+			);
+			path = AIReasoningSmoke;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000015 /* AIReasoningSmoke.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A10000000000000000000002 /* AIReasoningSmoke */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A10000000000000000000045 /* Build configuration list for PBXNativeTarget "AIReasoningSmoke" */;
+			buildPhases = (
+				A10000000000000000000030 /* Sources */,
+				A10000000000000000000031 /* Frameworks */,
+				A10000000000000000000032 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AIReasoningSmoke;
+			packageProductDependencies = (
+				A10000000000000000000060 /* AIReasoningCore */,
+				A10000000000000000000061 /* AnyLanguageModel */,
+				A10000000000000000000062 /* PiAIProviderRuntime */,
+			);
+			productName = AIReasoningSmoke;
+			productReference = A10000000000000000000015 /* AIReasoningSmoke.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A10000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					A10000000000000000000002 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+				};
+			};
+			buildConfigurationList = A10000000000000000000044 /* Build configuration list for PBXProject "AIReasoningSmoke" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A10000000000000000000003;
+			packageReferences = (
+				A10000000000000000000050 /* XCLocalSwiftPackageReference "../.." */,
+				A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */,
+				A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */,
+			);
+			productRefGroup = A10000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A10000000000000000000002 /* AIReasoningSmoke */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A10000000000000000000032 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A10000000000000000000030 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000020 /* AIReasoningSmokeApp.swift in Sources */,
+				A10000000000000000000021 /* ContentView.swift in Sources */,
+				A10000000000000000000022 /* SmokeViewModel.swift in Sources */,
+				A10000000000000000000023 /* SmokeBrowserHost.swift in Sources */,
+				A10000000000000000000024 /* SmokeHTTPProtocol.swift in Sources */,
+				A10000000000000000000028 /* SmokeSessionProbe.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A10000000000000000000040 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		A10000000000000000000041 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A10000000000000000000042 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "AIReasoning Smoke";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.aireasoningcore.smoke;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A10000000000000000000043 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "AIReasoning Smoke";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = NO;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.aireasoningcore.smoke;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A10000000000000000000044 /* Build configuration list for PBXProject "AIReasoningSmoke" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000040 /* Debug */,
+				A10000000000000000000041 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A10000000000000000000045 /* Build configuration list for PBXNativeTarget "AIReasoningSmoke" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A10000000000000000000042 /* Debug */,
+				A10000000000000000000043 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A10000000000000000000050 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/AnyLanguageModel.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.9.0;
+			};
+		};
+		A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/qoli/pi-ai-swift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 0.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A10000000000000000000060 /* AIReasoningCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000050 /* XCLocalSwiftPackageReference "../.." */;
+			productName = AIReasoningCore;
+		};
+		A10000000000000000000061 /* AnyLanguageModel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */;
+			productName = AnyLanguageModel;
+		};
+		A10000000000000000000062 /* PiAIProviderRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */;
+			productName = PiAIProviderRuntime;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A10000000000000000000001 /* Project object */;
+}

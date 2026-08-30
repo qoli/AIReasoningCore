@@ -28,6 +28,21 @@ AIReasoningCore
 
 Browser behavior is injected by the app through `BrowserOperator`.
 
+## iOS smoke verification
+
+The deterministic iOS smoke app exercises every Native Tool and Interactive
+Tool on an iOS Simulator, including a visible app-owned `WKWebView`, valid image
+assets, sandboxed document I/O, and a real `URLSession` transport adapter. It
+writes a machine-readable report that the runner reads back from the app
+container:
+
+```bash
+./Scripts/test-ios-smoke-simulator.sh
+```
+
+See `Smoke/AIReasoningSmoke/README.md` for the exact acceptance and claim
+boundaries. The baseline requires no API key or public network service.
+
 ## Development setup
 
 Dependencies are pinned through Swift Package Manager. Run:

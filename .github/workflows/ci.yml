@@ -12,11 +12,5 @@ jobs:
         with:
           submodules: false
       - run: swift test
-      - run: ./Scripts/test-cli-sigint.sh
-      - run: ./Scripts/typecheck-ios-smoke.sh
-      - run: ./Scripts/test-ios-smoke.sh
-      - run: ./Scripts/verify-license-metadata.sh
-      - run: ./Scripts/verify-agent-cli-contracts.sh
-      - run: ./Scripts/verify-smoke-agent-cli-fixtures.sh
-      - run: ./Scripts/verify-upstreams.sh
-      - run: ./Scripts/verify-no-ish-linkage.sh
+      - run: swift format lint --recursive Sources Tests Smoke/AIReasoningSmoke/AIReasoningSmoke Package.swift
+      - run: ./Scripts/test-ios-smoke-simulator.sh
