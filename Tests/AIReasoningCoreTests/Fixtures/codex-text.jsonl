@@ -1,6 +1,0 @@
-{"id":1,"result":{"userAgent":"fixture"}}
-{"id":2,"result":{"thread":{"id":"thread-fixture"}}}
-{"id":3,"result":{"turn":{"id":"turn-fixture"}}}
-{"method":"item/agentMessage/delta","params":{"threadId":"thread-fixture","turnId":"turn-fixture","itemId":"item-fixture","delta":"Hello"}}
-{"method":"item/agentMessage/delta","params":{"threadId":"thread-fixture","turnId":"turn-fixture","itemId":"item-fixture","delta":" world"}}
-{"method":"turn/completed","params":{"threadId":"thread-fixture","turn":{"id":"turn-fixture","status":"completed"}}}

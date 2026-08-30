@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init"}
-{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}}
-{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":" world"}}}
-{"type":"result","subtype":"success","is_error":false,"result":"Hello world"}

@@ -1,5 +1,0 @@
-{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1}}
-{"jsonrpc":"2.0","id":2,"result":{"sessionId":"fixture-session"}}
-{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Hello"}}}}
-{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"fixture-session","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" world"}}}}
-{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}

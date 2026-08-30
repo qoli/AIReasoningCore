@@ -13,24 +13,12 @@ AnyLanguageModel 0.9.0
   Integrated as an official Swift Package Manager dependency without patches.
   Its license remains authoritative for that component.
 
-MacPaw/OpenAI 0.5.1
-  Source: https://github.com/MacPaw/OpenAI
+pi-ai-swift
+  Source: local Swift package pending a public remote and version tag
   License: MIT
-  Copyright (c) 2023 MacPaw Inc.
-  Used only by the OpenAI-compatible CLI target. Its license remains
-  authoritative for that component.
-
-OpenMinis/ish-arm64
-  Source: https://github.com/OpenMinis/ish-arm64
-  License: GPLv3 with the additional terms in LICENSE.IOS; qualifying
-  contributions are additionally available under GPLv2 as described by the
-  upstream LICENSE.md.
-  Present only as an opt-in, pinned submodule. The upstream license files and
-  copyright history remain authoritative for iSH.
-
-Codex CLI, Claude Code and OpenCode are external, consumer-supplied programs.
-AIReasoningCore records protocol compatibility information but does not
-distribute those executables, their authentication state or their root filesystems.
+  Copyright (c) 2026 pi-ai-swift contributors
+  Integrated as a Swift Package Manager dependency without source duplication.
+  Its license remains authoritative for that component.
 
 Downstream binary distributors must preserve all notices and license texts
-required by the particular set of components they choose to link or bundle.
+required by the components they link or bundle.

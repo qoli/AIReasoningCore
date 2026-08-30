@@ -1,4 +1,0 @@
-[submodule "iSH"]
-	path = Upstreams/iSH
-	url = https://github.com/OpenMinis/ish-arm64.git
-	update = none
