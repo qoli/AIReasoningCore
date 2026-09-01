@@ -1,5 +1,5 @@
 {
-  "originHash" : "85c316913f9602b7265c93e3bf21366b73cea33901da5f0a274a536b170c4864",
+  "originHash" : "e820d4bf77eca4ced05a0a0b0dbfeeca316f085aab74ddbd43e8e6f61f42e7a9",
   "pins" : [
     {
       "identity" : "anylanguagemodel",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/qoli/pi-ai-swift.git",
       "state" : {
-        "revision" : "2f9a210855823717bf6f88899d96871b15ab6648",
-        "version" : "0.2.0"
+        "branch" : "main",
+        "revision" : "0d603d151362fce4413b1be5a2c5c4e5ac405822"
       }
     },
     {

@@ -45,14 +45,16 @@ boundaries. The baseline requires no API key or public network service.
 
 ## Development setup
 
-Dependencies are pinned through Swift Package Manager. Run:
+Dependencies are resolved through Swift Package Manager. Run:
 
 ```bash
 swift test
 ```
 
-`pi-ai-swift` is pinned to its public `0.2.0` release. Updating that dependency
-requires its own compatibility review, release, and verification.
+`pi-ai-swift` tracks the latest commit on its public `main` branch. SwiftPM
+records the revision used by a particular checkout in `Package.resolved`; run
+package resolution/update before compatibility verification so that snapshot
+advances to the current remote `main` commit.
 
 ## Provider runtime status
 

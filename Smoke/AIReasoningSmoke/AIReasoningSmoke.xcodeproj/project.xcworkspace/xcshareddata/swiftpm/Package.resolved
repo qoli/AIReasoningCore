@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/qoli/pi-ai-swift.git",
       "state" : {
-        "revision" : "2f9a210855823717bf6f88899d96871b15ab6648",
-        "version" : "0.2.0"
+        "branch" : "main",
+        "revision" : "0d603d151362fce4413b1be5a2c5c4e5ac405822"
       }
     },
     {

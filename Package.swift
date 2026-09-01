@@ -19,7 +19,7 @@ let package = Package(
     ),
     .package(
       url: "https://github.com/qoli/pi-ai-swift.git",
-      exact: "0.2.0"
+      branch: "main"
     ),
   ],
   targets: [

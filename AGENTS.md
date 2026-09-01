@@ -5,10 +5,11 @@ both maintenance targets for agents working on AIReasoningCore capabilities.
 They form one runtime stack, but remain separate repositories with independent
 source histories, tests, commits, versions, tags, and releases.
 
-Treat `Package.swift` as the authoritative declaration of the released
-`pi-ai-swift` version consumed by this repository. A sibling checkout may be
-used while developing a coordinated change, but released AIReasoningCore code
-must be verified against the remote, exactly pinned package version. Never edit
+Treat `Package.swift` as the authoritative declaration of the `pi-ai-swift`
+branch consumed by this repository. A sibling checkout may be used while
+developing a coordinated change, but AIReasoningCore must refresh resolution
+and be verified against the current remote `main` commit. `Package.resolved`
+records the exact revision used by a verification run. Never edit
 or commit changes inside `.build/checkouts/pi-ai-swift`, and do not vendor the
 provider implementation into this repository.
 
@@ -95,11 +96,12 @@ When a task crosses the seam:
    its `AGENTS.md` and `Docs/AI_MAINTENANCE.md`.
 2. Commit, tag, and publish pi-ai-swift independently only when the user has
    authorized those actions.
-3. Update AIReasoningCore to an exact released pi-ai-swift version in
-   `Package.swift` and refresh `Package.resolved`.
+3. Keep AIReasoningCore on the `pi-ai-swift/main` branch dependency and refresh
+   both `Package.resolved` snapshots.
 4. Remove any local package override and verify AIReasoningCore against the
-   remote tag before considering integration complete.
-5. Report the two repository commit SHAs and the pi-ai-swift tag separately.
+   current remote `main` commit before considering integration complete.
+5. Report the two repository commit SHAs and resolved pi-ai-swift revision
+   separately.
 
 Never combine two repositories into one commit or treat an unpublished sibling
 checkout as release evidence. Preserve unrelated worktree changes in both
@@ -123,8 +125,8 @@ an iOS Simulator build. Live provider tests are opt-in integration evidence;
 they do not replace deterministic fixtures and must never expose credentials.
 
 Cross-repository changes are complete only when each repository passes its own
-checks and AIReasoningCore resolves and tests the released remote pi-ai-swift
-version.
+checks and AIReasoningCore resolves and tests the current remote
+`pi-ai-swift/main` revision.
 
 ## Failure and Credential Policy
 

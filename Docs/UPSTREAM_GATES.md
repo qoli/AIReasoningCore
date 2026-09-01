@@ -45,16 +45,17 @@ sets `assetIDs` to an empty array. Provider assets are safely written to
 `AssetStore`, but they cannot be linked into that transcript entry without an
 upstream contract change.
 
-## pi-ai-swift release distribution
+## pi-ai-swift branch distribution
 
 The concrete built-in provider runtime now supplies catalog, authorization, wire
 protocol, streaming, tool continuation, and asset events to the Smoke app. The
 manual live console can exercise those capabilities without adding provider
 conditionals to AIReasoningCore.
 
-The distribution gate is resolved by the independently verified public
-pi-ai-swift `0.2.0` tag. Both AIReasoningCore package manifests pin that exact
-version, with no revision pin or local override. Deterministic acceptance has
-also been rerun against the remote tag. Live provider results remain separate
+Both AIReasoningCore package declarations track the public `pi-ai-swift/main`
+branch. SwiftPM still writes the exact revision selected by each resolution to
+the two `Package.resolved` files; those snapshots must be refreshed and checked
+against remote `main` before deterministic acceptance. There is no local package
+override or release-tag requirement. Live provider results remain separate
 environmental evidence because credentials, quota, and provider service state
 cannot be deterministic release inputs.
