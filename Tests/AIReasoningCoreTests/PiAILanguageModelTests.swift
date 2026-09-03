@@ -41,6 +41,21 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(values, ["Hel", "Hello"])
   }
 
+  func testReasoningSelectionPreservesDefaultOffAndTypedEffortInBothModes() async throws {
+    for effort: ProviderReasoningEffort? in [nil, .off, .high, .max] {
+      let runtime = FakeRuntime { request in
+        XCTAssertEqual(request.options.reasoningEffort, effort)
+        return responseEvents(for: request, text: "configured")
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
+      var options = GenerationOptions()
+      options[custom: PiAILanguageModel.self] = .init(reasoningEffort: effort)
+      _ = try await session.respond(to: "Hello", options: options)
+      _ = try await session.streamResponse(to: "Hello", options: options).collect()
+    }
+  }
+
   func testStructuredOutputUsesGenerationSchema() async throws {
     let runtime = FakeRuntime { request in
       XCTAssertNotNil(request.options.responseSchema)
@@ -156,7 +171,7 @@ final class PiAILanguageModelTests: XCTestCase {
     options.maximumResponseTokens = 321
     options.temperature = 0.25
     options[custom: PiAILanguageModel.self] = .init(
-      reasoningEffort: "high",
+      reasoningEffort: .high,
       providerOptions: ["debug": .bool(true)],
       outputModality: .image,
       sessionID: "session-1",
@@ -174,7 +189,7 @@ final class PiAILanguageModelTests: XCTestCase {
 
     XCTAssertEqual(request.options.maximumOutputTokens, 321)
     XCTAssertEqual(request.options.temperature, 0.25)
-    XCTAssertEqual(request.options.reasoningEffort, "high")
+    XCTAssertEqual(request.options.reasoningEffort, .high)
     XCTAssertEqual(request.options.providerOptions["debug"], .bool(true))
     XCTAssertEqual(request.options.outputModality, .image)
     XCTAssertEqual(request.options.sessionID, "session-1")

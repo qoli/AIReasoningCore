@@ -76,3 +76,7 @@ For visual inspection of the live console without sending traffic, launch the
 built app with the `--live-provider` argument. Live success is intentionally not
 part of the deterministic report because credentials, model availability,
 quota, and provider service state are external acceptance gates.
+
+The reasoning effort picker reads the selected model's catalog choices. Provider
+or model changes reset the selection to Provider default (`nil`); Off is a
+separate explicit selection when the runtime supports disabled reasoning.

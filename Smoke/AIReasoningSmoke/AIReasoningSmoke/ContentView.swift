@@ -272,11 +272,13 @@ private struct LiveProviderView: View {
         TextField("Temperature 0…1", text: $viewModel.temperature).keyboardType(.decimalPad)
       }
       Picker("Reasoning effort", selection: $viewModel.reasoningEffort) {
-        Text("Provider default").tag("")
-        ForEach(["off", "minimal", "low", "medium", "high", "xhigh", "max"], id: \.self) {
-          Text($0).tag($0)
+        Text("Provider default").tag(Optional<ProviderReasoningEffort>.none)
+        ForEach(viewModel.supportedReasoningEfforts, id: \.self) { effort in
+          Text(effort == .off ? "Off" : effort.rawValue.capitalized)
+            .tag(Optional(effort))
         }
       }
+      .disabled(viewModel.supportedReasoningEfforts.isEmpty)
       Picker("Cache retention", selection: $viewModel.cacheRetention) {
         Text("None").tag(ProviderCacheRetention.none)
         Text("Short").tag(ProviderCacheRetention.short)

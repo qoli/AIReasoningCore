@@ -59,3 +59,35 @@ against remote `main` before deterministic acceptance. There is no local package
 override or release-tag requirement. Live provider results remain separate
 environmental evidence because credentials, quota, and provider service state
 cannot be deterministic release inputs.
+
+## Typed reasoning effort integration candidate
+
+The local candidate adopts `ProviderReasoningEffort` and model-specific
+`supportedReasoningEfforts` from the coordinated pi-ai-swift candidate. The
+Smoke picker uses catalog choices and resets to provider default when the user
+changes provider or model. It does not hard-code the selectable effort levels.
+
+The declared dependency remains `pi-ai-swift/main`. Until the pi-ai-swift
+candidate is pushed with user authorization, this Core candidate requires a
+temporary sibling dependency for local verification.
+Remove that override, refresh both resolved snapshots, and run Core tests and
+iOS builds against the current remote main revision before claiming integration
+complete. A local sibling build is candidate evidence only.
+
+Candidate verification (2026-09-03): Core's 24 macOS tests, its generic iOS
+Simulator build, and the Smoke app build passed in a temporary copy using the
+sibling pi-ai-swift source. The source checkout has no local dependency override.
+The coordinated provider candidate passed 104 macOS tests and the pinned
+11-protocol upstream check. Its full Simulator run hit two Keychain tests with
+status -34018; excluding `KeychainProviderCredentialStoreTests` passed 102 tests.
+Live OAuth was skipped and no paid provider calls were made.
+
+Verification used candidates on separate baselines:
+
+- AIReasoningCore baseline: `6229f1743dd7a927fdeed0c6a6a15c98db7fcd1c`.
+- pi-ai-swift baseline and verified remote main: `0d603d151362fce4413b1be5a2c5c4e5ac405822`.
+- The provider candidate is now committed locally as
+  `8bb240969a906b832b0c3a5be432bcb88d18ce98`; it has not been pushed.
+- Both Core resolved snapshots still record `0d603d151362fce4413b1be5a2c5c4e5ac405822`,
+  which does not yet contain the typed effort API. A normal remote-dependency
+  build of this Core candidate remains pending publication of pi-ai-swift.

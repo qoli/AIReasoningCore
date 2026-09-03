@@ -11,8 +11,12 @@ import UIKit
 @MainActor
 final class LiveProviderViewModel: ObservableObject {
   @Published private(set) var providers: [ProviderDescriptor] = []
-  @Published var selectedProviderID = ""
-  @Published var selectedModelID = ""
+  @Published var selectedProviderID = "" {
+    didSet { if selectedProviderID != oldValue { reasoningEffort = nil } }
+  }
+  @Published var selectedModelID = "" {
+    didSet { if selectedModelID != oldValue { reasoningEffort = nil } }
+  }
   @Published var selectedAuthorizationMethodID = ""
 
   @Published var apiKey = ""
@@ -25,7 +29,7 @@ final class LiveProviderViewModel: ObservableObject {
   @Published var maximumOutputTokens = "256"
   @Published var temperatureEnabled = false
   @Published var temperature = "0"
-  @Published var reasoningEffort = ""
+  @Published var reasoningEffort: ProviderReasoningEffort?
   @Published var sessionID = ""
   @Published var serviceTier = ""
   @Published var cacheRetention: ProviderCacheRetention = .short
@@ -60,6 +64,10 @@ final class LiveProviderViewModel: ObservableObject {
 
   var selectedModel: ProviderModel? {
     availableModels.first { $0.id == selectedModelID }
+  }
+
+  var supportedReasoningEfforts: [ProviderReasoningEffort] {
+    selectedModel?.supportedReasoningEfforts ?? []
   }
 
   var authorizationMethods: [AuthorizationMethodDescriptor] {
@@ -680,7 +688,7 @@ final class LiveProviderViewModel: ObservableObject {
       maximumResponseTokens: try parsedMaximumTokens()
     )
     options[custom: PiAILanguageModel.self] = .init(
-      reasoningEffort: reasoningEffort.nilIfEmpty,
+      reasoningEffort: reasoningEffort,
       providerOptions: try parsedJSONObject(providerOptionsJSON, field: "Provider options"),
       outputModality: providerOptions.outputModality,
       sessionID: sessionID.nilIfEmpty,
@@ -698,7 +706,7 @@ final class LiveProviderViewModel: ObservableObject {
     ProviderGenerationOptions(
       maximumOutputTokens: try parsedMaximumTokens(),
       temperature: try parsedTemperature(),
-      reasoningEffort: reasoningEffort.nilIfEmpty,
+      reasoningEffort: reasoningEffort,
       responseSchema: nil,
       providerOptions: try parsedJSONObject(providerOptionsJSON, field: "Provider options"),
       outputModality: outputModality,

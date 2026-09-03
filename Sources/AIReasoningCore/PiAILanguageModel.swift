@@ -6,7 +6,7 @@ public struct PiAILanguageModel: LanguageModel {
   public typealias UnavailableReason = Never
 
   public struct CustomGenerationOptions: AnyLanguageModel.CustomGenerationOptions {
-    public var reasoningEffort: String?
+    public var reasoningEffort: ProviderReasoningEffort?
     public var providerOptions: [String: PiAIProviderRuntime.JSONValue]
     public var maximumToolIterations: Int
     public var outputModality: ProviderOutputModality
@@ -16,7 +16,7 @@ public struct PiAILanguageModel: LanguageModel {
     public var toolChoice: PiAIProviderRuntime.JSONValue?
 
     public init(
-      reasoningEffort: String? = nil,
+      reasoningEffort: ProviderReasoningEffort? = nil,
       providerOptions: [String: PiAIProviderRuntime.JSONValue] = [:],
       maximumToolIterations: Int = 8,
       outputModality: ProviderOutputModality = .text,

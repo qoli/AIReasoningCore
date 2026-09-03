@@ -28,6 +28,25 @@ AIReasoningCore
 
 Browser behavior is injected by the app through `BrowserOperator`.
 
+## Reasoning effort
+
+Select a typed effort through the standard custom generation options seam:
+
+```swift
+var options = GenerationOptions()
+options[custom: PiAILanguageModel.self] = .init(reasoningEffort: .high)
+let response = try await session.respond(to: "Explain the tradeoff", options: options)
+```
+
+Use the selected `ProviderModel.supportedReasoningEfforts` from the runtime
+catalog to populate a picker. `nil` leaves the provider default unchanged;
+`.off` requests disabled reasoning and is offered only where representable.
+Unsupported selections fail explicitly in pi-ai-swift. Provider/model mappings
+remain owned by pi-ai-swift, not by the app or Core.
+
+The typed seam currently requires the coordinated pi-ai-swift candidate;
+remote-main integration is tracked in `Docs/UPSTREAM_GATES.md`.
+
 ## iOS smoke verification
 
 The deterministic iOS smoke app exercises every Native Tool and Interactive
