@@ -60,34 +60,34 @@ override or release-tag requirement. Live provider results remain separate
 environmental evidence because credentials, quota, and provider service state
 cannot be deterministic release inputs.
 
-## Typed reasoning effort integration candidate
+## Typed reasoning effort integration (resolved)
 
-The local candidate adopts `ProviderReasoningEffort` and model-specific
-`supportedReasoningEfforts` from the coordinated pi-ai-swift candidate. The
-Smoke picker uses catalog choices and resets to provider default when the user
-changes provider or model. It does not hard-code the selectable effort levels.
+Core adopts `ProviderReasoningEffort` and model-specific
+`supportedReasoningEfforts` from pi-ai-swift. The Smoke picker uses catalog
+choices and resets to provider default when the user changes provider or model.
+It does not hard-code the selectable effort levels.
 
-The declared dependency remains `pi-ai-swift/main`. Until the pi-ai-swift
-candidate is pushed with user authorization, this Core candidate requires a
-temporary sibling dependency for local verification.
-Remove that override, refresh both resolved snapshots, and run Core tests and
-iOS builds against the current remote main revision before claiming integration
-complete. A local sibling build is candidate evidence only.
+Remote-main integration was verified on 2026-09-03 against published
+pi-ai-swift commit `8bb240969a906b832b0c3a5be432bcb88d18ce98`. Both
+`Package.resolved` snapshots and the SwiftPM/Xcode source-control checkouts
+resolve that exact revision. The package declarations continue to track `main`,
+with no sibling package override.
 
-Candidate verification (2026-09-03): Core's 24 macOS tests, its generic iOS
-Simulator build, and the Smoke app build passed in a temporary copy using the
-sibling pi-ai-swift source. The source checkout has no local dependency override.
-The coordinated provider candidate passed 104 macOS tests and the pinned
-11-protocol upstream check. Its full Simulator run hit two Keychain tests with
-status -34018; excluding `KeychainProviderCredentialStoreTests` passed 102 tests.
-Live OAuth was skipped and no paid provider calls were made.
+Verification on the published revision:
 
-Verification used candidates on separate baselines:
+- pi-ai-swift: 104 macOS tests and the pinned 11-protocol upstream check passed.
+- Core: 24 macOS tests and the generic iOS Simulator build passed.
+- Smoke app: generic iOS Simulator build passed with Xcode restricted to the
+  resolved package versions.
+- Formatting and whitespace checks passed.
 
-- AIReasoningCore baseline: `6229f1743dd7a927fdeed0c6a6a15c98db7fcd1c`.
-- pi-ai-swift baseline and verified remote main: `0d603d151362fce4413b1be5a2c5c4e5ac405822`.
-- The provider candidate is now committed locally as
-  `8bb240969a906b832b0c3a5be432bcb88d18ce98`; it has not been pushed.
-- Both Core resolved snapshots still record `0d603d151362fce4413b1be5a2c5c4e5ac405822`,
-  which does not yet contain the typed effort API. A normal remote-dependency
-  build of this Core candidate remains pending publication of pi-ai-swift.
+The provider's earlier Simulator run on the same source hit two Keychain tests
+with status -34018; excluding `KeychainProviderCredentialStoreTests` passed 102
+tests. This remains a Simulator Keychain verification limitation. Live OAuth
+was skipped and no paid provider calls were made. Compilation does not establish
+live-provider behavior.
+
+The implementation commits are separate: Core
+`af63b79a68ad7073991b58369a21c5f2631cc74f` and pi-ai-swift
+`8bb240969a906b832b0c3a5be432bcb88d18ce98`. The follow-up Core integration commit
+updates the resolved snapshots and this acceptance record.

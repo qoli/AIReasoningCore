@@ -44,8 +44,8 @@ catalog to populate a picker. `nil` leaves the provider default unchanged;
 Unsupported selections fail explicitly in pi-ai-swift. Provider/model mappings
 remain owned by pi-ai-swift, not by the app or Core.
 
-The typed seam currently requires the coordinated pi-ai-swift candidate;
-remote-main integration is tracked in `Docs/UPSTREAM_GATES.md`.
+The typed seam is integrated with `pi-ai-swift/main`; the verified revision and
+acceptance boundaries are recorded in `Docs/UPSTREAM_GATES.md`.
 
 ## iOS smoke verification
 
