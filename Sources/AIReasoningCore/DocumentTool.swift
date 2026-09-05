@@ -20,6 +20,9 @@ public struct DocumentTool: Tool {
     guard root.isFileURL else {
       throw AIReasoningCoreError(.invalidDocumentPath, "document root must be a file URL")
     }
+    guard maximumReadBytes >= 0 else {
+      throw AIReasoningCoreError(.unsupportedOperation, "maximumReadBytes must be nonnegative")
+    }
     let standardizedRoot = root.standardizedFileURL
     try FileManager.default.createDirectory(at: standardizedRoot, withIntermediateDirectories: true)
     self.root = standardizedRoot.resolvingSymlinksInPath()
@@ -30,13 +33,7 @@ public struct DocumentTool: Tool {
     switch arguments.operation {
     case "read":
       let url = try resolve(arguments.path)
-      let data = try Data(contentsOf: url)
-      guard data.count <= maximumReadBytes else {
-        throw AIReasoningCoreError(
-          .responseTooLarge,
-          "document exceeded \(maximumReadBytes) bytes"
-        )
-      }
+      let data = try readDocument(at: url)
       guard let value = String(data: data, encoding: .utf8) else {
         throw AIReasoningCoreError(.invalidProviderResponse, "document is not UTF-8")
       }
@@ -65,6 +62,28 @@ public struct DocumentTool: Tool {
         .unsupportedOperation,
         "unsupported document operation: \(arguments.operation)"
       )
+    }
+  }
+
+  private func readDocument(at url: URL) throws -> Data {
+    let handle = try FileHandle(forReadingFrom: url)
+    defer { try? handle.close() }
+    var data = Data()
+    while true {
+      try Task.checkCancellation()
+      // Read at most one byte past the limit, including when the limit is zero.
+      let remaining = maximumReadBytes - data.count
+      let chunkSize = remaining >= 65_536 ? 65_536 : remaining + 1
+      guard let chunk = try handle.read(upToCount: chunkSize), !chunk.isEmpty else {
+        return data
+      }
+      guard chunk.count <= remaining else {
+        throw AIReasoningCoreError(
+          .responseTooLarge,
+          "document exceeded \(maximumReadBytes) bytes"
+        )
+      }
+      data.append(chunk)
     }
   }
 

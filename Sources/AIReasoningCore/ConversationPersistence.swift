@@ -63,6 +63,10 @@ public actor ConversationStore {
     guard FileManager.default.fileExists(atPath: url.path) else {
       throw AIReasoningCoreError(.persistenceFailure, "conversation not found: \(id)")
     }
+    return try decodeRecord(at: url)
+  }
+
+  private func decodeRecord(at url: URL) throws -> ConversationRecord {
     let record = try decoder.decode(ConversationRecord.self, from: Data(contentsOf: url))
     guard record.schemaVersion == 1 else {
       throw AIReasoningCoreError(
@@ -79,7 +83,7 @@ public actor ConversationStore {
       includingPropertiesForKeys: nil
     )
     .filter { $0.pathExtension == "conversation" }
-    .map { try decoder.decode(ConversationRecord.self, from: Data(contentsOf: $0)) }
+    .map { try decodeRecord(at: $0) }
     .sorted { $0.updatedAt > $1.updatedAt }
   }
 

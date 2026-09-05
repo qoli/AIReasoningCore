@@ -107,10 +107,9 @@ final class SmokeViewModel: ObservableObject {
       let configuration = URLSessionConfiguration.ephemeral
       configuration.protocolClasses = [SmokeHTTPProtocol.self]
       let client = HTTPClient.urlSession(URLSession(configuration: configuration))
-      let policy = HTTPAccessPolicy(allowedSchemes: ["https"], allowedHosts: ["smoke.local"])
 
       await runCheck(id: "http", capability: "Native") {
-        let tool = HTTPTool(client: client, policy: policy)
+        let tool = HTTPTool(client: client)
         let arguments = try HTTPTool.Arguments(
           GeneratedContent(
             properties: [
@@ -139,7 +138,7 @@ final class SmokeViewModel: ObservableObject {
 
       await runCheck(id: "session-tool-loop", capability: "Core") {
         let output = try await runSessionToolProbe(
-          tool: HTTPTool(client: client, policy: policy),
+          tool: HTTPTool(client: client),
           toolName: "http_request",
           arguments: .object([
             "method": .string("POST"),
@@ -153,7 +152,7 @@ final class SmokeViewModel: ObservableObject {
       }
 
       await runCheck(id: "web-read", capability: "Native") {
-        let tool = WebReadTool(client: client, policy: policy)
+        let tool = WebReadTool(client: client)
         let arguments = try WebReadTool.Arguments(
           GeneratedContent(properties: ["url": "https://smoke.local/page"])
         )

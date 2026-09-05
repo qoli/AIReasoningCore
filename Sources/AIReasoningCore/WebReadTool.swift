@@ -37,7 +37,8 @@ public struct WebReadTool: Tool {
       HTTPRequest(
         method: "GET",
         url: url,
-        headers: ["Accept": "text/html,text/plain,application/xhtml+xml"]
+        headers: ["Accept": "text/html,text/plain,application/xhtml+xml"],
+        maximumResponseBytes: maximumResponseBytes
       )
     )
     try policy.validate(response.finalURL)

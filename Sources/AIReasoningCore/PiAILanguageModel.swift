@@ -89,12 +89,6 @@ public struct PiAILanguageModel: LanguageModel {
       let result = try await collect(runtime.stream(request))
 
       if !result.toolCalls.isEmpty {
-        guard result.text.isEmpty else {
-          throw AIReasoningCoreError(
-            .invalidProviderResponse,
-            "provider returned mixed text and tool calls in one turn"
-          )
-        }
         guard toolIterations < providerOptions.maximumToolIterations else {
           throw AIReasoningCoreError(
             .toolIterationLimitExceeded,
@@ -106,7 +100,7 @@ public struct PiAILanguageModel: LanguageModel {
           result.toolCalls,
           in: session
         )
-        transcriptEntries.append(.toolCalls(Transcript.ToolCalls(resolution.calls)))
+        transcriptEntries.append(contentsOf: try ProviderMapper.entries(from: result.content))
         if resolution.stopped {
           let empty = try emptyContent(for: type)
           return LanguageModelSession.Response(
@@ -117,7 +111,7 @@ public struct PiAILanguageModel: LanguageModel {
         }
         transcriptEntries.append(contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
         messages.append(
-          .assistant(result.toolCalls.map(ProviderAssistantContent.toolCall))
+          .assistant(result.content)
         )
         messages.append(contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
         continue
@@ -232,7 +226,8 @@ public struct PiAILanguageModel: LanguageModel {
     _ stream: AsyncThrowingStream<ProviderEvent, any Error>
   ) async throws -> CollectedResponse {
     var text = ""
-    var calls: [ProviderToolCall] = []
+    var content: [ProviderAssistantContent] = []
+    var callIndices: [String: Int] = [:]
     var openCalls: [String: String] = [:]
     var completedCallIDs = Set<String>()
     var completed = false
@@ -265,6 +260,11 @@ public struct PiAILanguageModel: LanguageModel {
         )
       case .textDelta(let delta):
         text += delta
+        if case .text(let previous) = content.last {
+          content[content.count - 1] = .text(previous + delta)
+        } else {
+          content.append(.text(delta))
+        }
       case .toolCallStarted(let id, let name):
         guard openCalls[id] == nil, !completedCallIDs.contains(id) else {
           throw AIReasoningCoreError(
@@ -273,6 +273,8 @@ public struct PiAILanguageModel: LanguageModel {
           )
         }
         openCalls[id] = name
+        callIndices[id] = content.count
+        content.append(.toolCall(ProviderToolCall(id: id, name: name, arguments: .object([:]))))
       case .toolInputDelta(let id, _):
         guard openCalls[id] != nil else {
           throw AIReasoningCoreError(
@@ -294,7 +296,10 @@ public struct PiAILanguageModel: LanguageModel {
           )
         }
         completedCallIDs.insert(call.id)
-        calls.append(call)
+        guard let index = callIndices.removeValue(forKey: call.id) else {
+          throw AIReasoningCoreError(.invalidProviderResponse, "missing tool call content position")
+        }
+        content[index] = .toolCall(call)
       case .asset(let asset):
         guard let assets else {
           throw AIReasoningCoreError(
@@ -323,6 +328,10 @@ public struct PiAILanguageModel: LanguageModel {
         "provider stream ended with incomplete tool calls"
       )
     }
+    let calls = content.compactMap { item -> ProviderToolCall? in
+      if case .toolCall(let call) = item { return call }
+      return nil
+    }
     guard !text.isEmpty || !calls.isEmpty else {
       throw AIReasoningCoreError(.invalidProviderResponse, "provider returned no content")
     }
@@ -338,7 +347,7 @@ public struct PiAILanguageModel: LanguageModel {
         "provider completed tool calls without a toolCalls finish reason"
       )
     }
-    return CollectedResponse(text: text, toolCalls: calls)
+    return CollectedResponse(text: text, toolCalls: calls, content: content)
   }
 
   private func validate(_ metadata: ProviderResponseMetadata) throws {
@@ -365,7 +374,7 @@ public struct PiAILanguageModel: LanguageModel {
       let decision =
         await session.toolExecutionDelegate?.toolCallDecision(for: call, in: session) ?? .execute
       if case .stop = decision {
-        return ToolResolution(calls: transcriptCalls, outputs: [], stopped: true)
+        return ToolResolution(outputs: [], stopped: true)
       }
       decisions.append(decision)
     }
@@ -410,7 +419,7 @@ public struct PiAILanguageModel: LanguageModel {
         }
       }
     }
-    return ToolResolution(calls: transcriptCalls, outputs: outputs, stopped: false)
+    return ToolResolution(outputs: outputs, stopped: false)
   }
 
   private func execute<T: Tool>(
@@ -444,26 +453,28 @@ public struct PiAILanguageModel: LanguageModel {
 private struct CollectedResponse: Sendable {
   let text: String
   let toolCalls: [ProviderToolCall]
+  let content: [ProviderAssistantContent]
 }
 
 private struct ToolResolution: Sendable {
-  let calls: [Transcript.ToolCall]
   let outputs: [Transcript.ToolOutput]
   let stopped: Bool
 }
 
 private enum ProviderMapper {
   static func messages(from transcript: Transcript) throws -> [ProviderMessage] {
-    try transcript.map { entry in
+    var messages: [ProviderMessage] = []
+    for entry in transcript {
+      let message: ProviderMessage
       switch entry {
       case .instructions(let instructions):
-        return .system(try text(from: instructions.segments))
+        message = .system(try text(from: instructions.segments))
       case .prompt(let prompt):
-        return .user(try prompt.segments.map(userContent))
+        message = .user(try prompt.segments.map(userContent))
       case .response(let response):
-        return .assistant(try response.segments.map(assistantContent))
+        message = .assistant(try response.segments.map(assistantContent))
       case .toolCalls(let calls):
-        return .assistant(
+        message = .assistant(
           try calls.map { call in
             .toolCall(
               ProviderToolCall(
@@ -474,9 +485,41 @@ private enum ProviderMapper {
             )
           })
       case .toolOutput(let output):
-        return try toolResult(output)
+        message = try toolResult(output)
+      }
+      // A mixed assistant turn is stored as adjacent response/toolCalls entries.
+      // A tool output, prompt or instructions entry terminates that turn.
+      if case .assistant(let content) = message,
+        case .assistant(let previous) = messages.last
+      {
+        messages[messages.count - 1] = .assistant(previous + content)
+      } else {
+        messages.append(message)
       }
     }
+    return messages
+  }
+
+  static func entries(from content: [ProviderAssistantContent]) throws -> [Transcript.Entry] {
+    var entries: [Transcript.Entry] = []
+    for item in content {
+      switch item {
+      case .text(let text):
+        entries.append(.response(.init(assetIDs: [], segments: [.text(.init(content: text))])))
+      case .reasoning:
+        throw AIReasoningCoreError(
+          .invalidTranscript, "AnyLanguageModel cannot represent assistant reasoning content")
+      case .toolCall(let call):
+        let mapped = try transcriptToolCall(call)
+        if case .toolCalls(let previous) = entries.last {
+          entries[entries.count - 1] = .toolCalls(
+            .init(id: previous.id, Array(previous) + [mapped]))
+        } else {
+          entries.append(.toolCalls(.init([mapped])))
+        }
+      }
+    }
+    return entries
   }
 
   static func tools(from tools: [any Tool]) throws -> [ProviderToolDefinition] {
@@ -527,6 +570,9 @@ private enum ProviderMapper {
   ) throws -> GeneratedContent {
     if type == String.self { return GeneratedContent(text) }
     do {
+      // GeneratedContent intentionally repairs partial JSON for streaming snapshots.
+      // Final output must first be valid, complete JSON without that repair.
+      _ = try JSONDecoder().decode(PiAIProviderRuntime.JSONValue.self, from: Data(text.utf8))
       return try GeneratedContent(json: text)
     } catch {
       throw AIReasoningCoreError(
@@ -561,7 +607,15 @@ private enum ProviderMapper {
       let raw = GeneratedContent(text)
       return .init(content: (text as! Content).asPartiallyGenerated(), rawContent: raw)
     }
-    let raw = try GeneratedContent(json: text)
+    let raw: GeneratedContent
+    do {
+      raw = try GeneratedContent(json: text)
+    } catch {
+      throw AIReasoningCoreError(
+        .invalidStructuredOutput,
+        "provider returned invalid structured output: \(error)"
+      )
+    }
     guard let partial = try? partiallyGenerated(type, from: raw) else { return nil }
     return .init(content: partial, rawContent: raw)
   }

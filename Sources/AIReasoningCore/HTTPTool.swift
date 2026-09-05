@@ -39,7 +39,8 @@ public struct HTTPTool: Tool {
         method: arguments.method.uppercased(),
         url: url,
         headers: headers,
-        body: arguments.body?.data(using: .utf8)
+        body: arguments.body?.data(using: .utf8),
+        maximumResponseBytes: maximumResponseBytes
       )
     )
     try policy.validate(response.finalURL)

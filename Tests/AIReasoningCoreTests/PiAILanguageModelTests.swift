@@ -83,12 +83,14 @@ final class PiAILanguageModelTests: XCTestCase {
       model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
     )
 
-    let response = try await session.streamResponse(
-      to: "Answer",
-      generating: StructuredAnswer.self
-    ).collect()
+    var partialAnswers: [String?] = []
+    for try await snapshot in session.streamResponse(
+      to: "Answer", generating: StructuredAnswer.self)
+    {
+      partialAnswers.append(snapshot.content.answer)
+    }
 
-    XCTAssertEqual(response.content.answer, "yes")
+    XCTAssertEqual(partialAnswers, [nil, "yes"])
   }
 
   func testToolCallExecutesAndContinuesProviderConversation() async throws {
@@ -126,6 +128,94 @@ final class PiAILanguageModelTests: XCTestCase {
       return XCTFail("expected tool output")
     }
     XCTAssertEqual(output.toolName, "echo")
+  }
+
+  func testMixedAssistantTurnPreservesOrderThroughContinuationAndPersistedReplay() async throws {
+    let firstCall = ProviderToolCall(
+      id: "call-1", name: "echo", arguments: .object(["value": .string("first")]))
+    let secondCall = ProviderToolCall(
+      id: "call-2", name: "echo", arguments: .object(["value": .string("second")]))
+    let expected: [ProviderAssistantContent] = [
+      .text("Checking now."), .toolCall(firstCall), .text("Also checking."),
+      .toolCall(secondCall), .text("Waiting."),
+    ]
+    let runtime = FakeRuntime { request in
+      if let resultIndex = request.messages.firstIndex(where: {
+        if case .toolResult = $0 { true } else { false }
+      }) {
+        XCTAssertEqual(request.messages[resultIndex - 1], .assistant(expected))
+        XCTAssertEqual(
+          request.messages.filter {
+            if case .assistant(let content) = $0 {
+              return content.contains { if case .toolCall = $0 { true } else { false } }
+            }
+            return false
+          }.count, 1)
+        guard case .toolResult(let first) = request.messages[resultIndex],
+          case .toolResult(let second) = request.messages[resultIndex + 1]
+        else { throw TestFailure.missingToolResults }
+        XCTAssertEqual(first.toolCallID, "call-1")
+        XCTAssertEqual(second.toolCallID, "call-2")
+        return responseEvents(for: request, text: "done")
+      }
+      return [
+        .responseStarted(metadata(for: request)),
+        .textDelta("Checking "), .textDelta("now."),
+        .toolCallStarted(id: firstCall.id, name: firstCall.name),
+        .textDelta("Also checking."),
+        .toolCallStarted(id: secondCall.id, name: secondCall.name),
+        .toolCallCompleted(secondCall), .toolCallCompleted(firstCall),
+        .textDelta("Waiting."), .completed(.toolCalls),
+      ]
+    }
+    let model = PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+    let session = LanguageModelSession(model: model, tools: [EchoTool()])
+    let response = try await session.respond(to: "Check both")
+    XCTAssertEqual(response.content, "done")
+    XCTAssertEqual(session.transcript.count, 9)
+    guard case .response(let preamble) = session.transcript[1],
+      case .text(let text) = preamble.segments.first
+    else { return XCTFail("expected persisted preamble") }
+    XCTAssertEqual(text.content, "Checking now.")
+
+    let restored = try JSONDecoder().decode(
+      Transcript.self, from: JSONEncoder().encode(session.transcript))
+    let replay = LanguageModelSession(model: model, tools: [EchoTool()], transcript: restored)
+    _ = try await replay.respond(to: "Follow up")
+  }
+
+  func testMalformedFinalStructuredOutputFailsInBothModesForStopAndLength() async throws {
+    for reason: ProviderFinishReason in [.stop, .length] {
+      for json in [#"{"answer":"yes""#, #"{"answer":"yes"} trailing"#] {
+        for streaming in [false, true] {
+          let runtime = FakeRuntime { request in
+            [.responseStarted(metadata(for: request)), .textDelta(json), .completed(reason)]
+          }
+          let session = LanguageModelSession(
+            model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
+          do {
+            if streaming {
+              _ = try await session.streamResponse(
+                to: "Answer", generating: StructuredAnswer.self
+              ).collect()
+            } else {
+              _ = try await session.respond(to: "Answer", generating: StructuredAnswer.self)
+            }
+            XCTFail("expected malformed final JSON rejection")
+          } catch let error as AIReasoningCoreError {
+            XCTAssertEqual(error.code, .invalidStructuredOutput)
+          }
+          XCTAssertFalse(
+            session.transcript.contains {
+              if case .response = $0 { true } else { false }
+            })
+        }
+      }
+    }
+  }
+
+  private enum TestFailure: Error {
+    case missingToolResults
   }
 
   func testOneToolIterationAllowsFollowingFinalResponse() async throws {

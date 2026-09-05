@@ -5,6 +5,38 @@ import XCTest
 @testable import AIReasoningCore
 
 final class StoresAndToolsTests: XCTestCase {
+  func testConversationListAndLoadRejectUnsupportedSchema() async throws {
+    let directory = temporaryDirectory("schema-validation")
+    let store = try ConversationStore(directory: directory)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let id = UUID()
+    try await store.save(
+      ConversationRecord(id: id, providerID: "provider", modelID: "model", transcript: Transcript())
+    )
+    let records = try await store.list()
+    XCTAssertEqual(records.map(\.id), [id])
+
+    let file = directory.appendingPathComponent(id.uuidString).appendingPathExtension(
+      "conversation")
+    var json = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+    json["schemaVersion"] = 2
+    try JSONSerialization.data(withJSONObject: json).write(to: file, options: .atomic)
+
+    do {
+      _ = try await store.load(id: id)
+      XCTFail("load must reject unsupported schema")
+    } catch let error as AIReasoningCoreError {
+      XCTAssertEqual(error.code, .persistenceFailure)
+    }
+    do {
+      _ = try await store.list()
+      XCTFail("list must reject unsupported schema")
+    } catch let error as AIReasoningCoreError {
+      XCTAssertEqual(error.code, .persistenceFailure)
+    }
+  }
+
   func testConversationRoundTrip() async throws {
     let directory = temporaryDirectory("conversations")
     let store = try ConversationStore(directory: directory)
@@ -48,9 +80,10 @@ final class StoresAndToolsTests: XCTestCase {
     XCTAssertEqual(assetIDs, ["image-1"])
   }
 
-  func testHTTPToolEnforcesHostPolicy() async throws {
-    let client = HTTPClient { _ in
-      HTTPResponse(
+  func testHTTPToolEnforcesSchemePolicy() async throws {
+    let client = HTTPClient { request in
+      XCTAssertEqual(request.url.scheme, "https")
+      return HTTPResponse(
         statusCode: 200,
         headers: [:],
         body: Data("ok".utf8),
@@ -59,7 +92,7 @@ final class StoresAndToolsTests: XCTestCase {
     }
     let tool = HTTPTool(
       client: client,
-      policy: HTTPAccessPolicy(allowedSchemes: ["https"], allowedHosts: ["example.com"])
+      policy: HTTPAccessPolicy(allowedSchemes: ["https"])
     )
     let allowed = try HTTPTool.Arguments(
       GeneratedContent(
@@ -79,7 +112,7 @@ final class StoresAndToolsTests: XCTestCase {
       GeneratedContent(
         properties: [
           "method": "GET",
-          "url": "https://blocked.example/data",
+          "url": "http://example.com/data",
           "headersJSON": nil as String?,
           "body": nil as String?,
         ]
