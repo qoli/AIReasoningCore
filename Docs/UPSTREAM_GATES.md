@@ -38,6 +38,15 @@ session stream therefore cannot reliably cancel the underlying provider request.
 AIReasoningCore does not claim session-level provider cancellation until that
 wrapper forwards termination.
 
+Non-streaming tool continuation within one `respond` call now uses
+pi-ai-swift's terminal `ProviderResponseSnapshot` and preserves its opaque replay
+metadata in a `ProviderAssistantMessage`. AnyLanguageModel's persisted
+`Transcript`, however, can represent only visible assistant text and tool calls;
+it cannot retain signed text, reasoning blocks, thought signatures, source
+identity or response metadata when a transcript is encoded and later restored.
+Core records that loss explicitly and does not claim opaque provider-state replay
+across a reconstructed `LanguageModelSession`.
+
 ## AnyLanguageModel response assets
 
 `LanguageModelSession` creates the final response transcript entry itself and
@@ -67,27 +76,25 @@ Core adopts `ProviderReasoningEffort` and model-specific
 choices and resets to provider default when the user changes provider or model.
 It does not hard-code the selectable effort levels.
 
-Remote-main integration was verified on 2026-09-03 against published
-pi-ai-swift commit `8bb240969a906b832b0c3a5be432bcb88d18ce98`. Both
+Remote-main integration was refreshed on 2026-09-20 against published
+pi-ai-swift commit `d0fb08df6cad382c336b229fe4ebb56956537664`. Both
 `Package.resolved` snapshots and the SwiftPM/Xcode source-control checkouts
 resolve that exact revision. The package declarations continue to track `main`,
 with no sibling package override.
 
 Verification on the published revision:
 
-- pi-ai-swift: 104 macOS tests and the pinned 11-protocol upstream check passed.
-- Core: 24 macOS tests and the generic iOS Simulator build passed.
+- pi-ai-swift: 158 macOS tests and the pinned 11-protocol upstream check passed.
+- Core: 33 macOS tests and the generic iOS Simulator build passed.
 - Smoke app: generic iOS Simulator build passed with Xcode restricted to the
   resolved package versions.
 - Formatting and whitespace checks passed.
 
-The provider's earlier Simulator run on the same source hit two Keychain tests
-with status -34018; excluding `KeychainProviderCredentialStoreTests` passed 102
-tests. This remains a Simulator Keychain verification limitation. Live OAuth
-was skipped and no paid provider calls were made. Compilation does not establish
-live-provider behavior.
+The integration consumes mandatory terminal response snapshots, preserves their
+signed text/reasoning/tool metadata during an immediate non-streaming tool loop,
+and rejects missing or contradictory terminal state. Live OAuth and generation
+were not run; deterministic compilation and tests do not establish live Kimi
+service behavior.
 
-The implementation commits are separate: Core
-`af63b79a68ad7073991b58369a21c5f2631cc74f` and pi-ai-swift
-`8bb240969a906b832b0c3a5be432bcb88d18ce98`. The follow-up Core integration commit
-updates the resolved snapshots and this acceptance record.
+The implementation commits remain separate: Core
+`b7ff9df` integrates pi-ai-swift `d0fb08df6cad382c336b229fe4ebb56956537664`.
