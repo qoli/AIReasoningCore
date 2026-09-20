@@ -110,9 +110,13 @@ public struct PiAILanguageModel: LanguageModel {
           )
         }
         transcriptEntries.append(contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
-        messages.append(
-          .assistant(result.content)
-        )
+        guard let assistantMessage = result.assistantMessage else {
+          throw AIReasoningCoreError(
+            .invalidProviderResponse,
+            "provider tool response is missing replayable terminal state"
+          )
+        }
+        messages.append(.assistantMessage(assistantMessage))
         messages.append(contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
         continue
       }
@@ -151,6 +155,7 @@ public struct PiAILanguageModel: LanguageModel {
           var accumulated = ""
           var completed = false
           var started = false
+          var terminalSnapshot: ProviderResponseSnapshot?
           for try await event in runtime.stream(request) {
             try Task.checkCancellation()
             guard !completed else {
@@ -169,6 +174,14 @@ public struct PiAILanguageModel: LanguageModel {
               try validate(metadata)
               started = true
               continue
+            }
+            if terminalSnapshot != nil {
+              guard case .completed = event else {
+                throw AIReasoningCoreError(
+                  .invalidProviderResponse,
+                  "provider emitted an event after the terminal response snapshot"
+                )
+              }
             }
             switch event {
             case .textDelta(let delta):
@@ -192,8 +205,24 @@ public struct PiAILanguageModel: LanguageModel {
                 )
               }
               _ = try await assets.save(asset)
+            case .responseSnapshot(let snapshot):
+              try validate(snapshot)
+              terminalSnapshot = snapshot
             case .completed(let reason):
               try ProviderMapper.validateFinish(reason)
+              guard let terminalSnapshot else {
+                throw AIReasoningCoreError(
+                  .invalidProviderResponse,
+                  "provider completed without a terminal response snapshot"
+                )
+              }
+              try validate(
+                terminalSnapshot,
+                finishReason: reason,
+                text: accumulated,
+                toolCalls: [],
+                streaming: true
+              )
               completed = true
             case .responseStarted:
               throw AIReasoningCoreError(
@@ -233,6 +262,7 @@ public struct PiAILanguageModel: LanguageModel {
     var completed = false
     var started = false
     var finishReason: ProviderFinishReason?
+    var terminalSnapshot: ProviderResponseSnapshot?
     for try await event in stream {
       try Task.checkCancellation()
       guard !completed else {
@@ -251,6 +281,14 @@ public struct PiAILanguageModel: LanguageModel {
         try validate(metadata)
         started = true
         continue
+      }
+      if terminalSnapshot != nil {
+        guard case .completed = event else {
+          throw AIReasoningCoreError(
+            .invalidProviderResponse,
+            "provider emitted an event after the terminal response snapshot"
+          )
+        }
       }
       switch event {
       case .responseStarted:
@@ -310,8 +348,17 @@ public struct PiAILanguageModel: LanguageModel {
         _ = try await assets.save(asset)
       case .usage, .reasoningDelta, .reasoningSignatureDelta:
         break
+      case .responseSnapshot(let snapshot):
+        try validate(snapshot)
+        terminalSnapshot = snapshot
       case .completed(let reason):
         try ProviderMapper.validateFinish(reason)
+        guard terminalSnapshot != nil else {
+          throw AIReasoningCoreError(
+            .invalidProviderResponse,
+            "provider completed without a terminal response snapshot"
+          )
+        }
         completed = true
         finishReason = reason
       }
@@ -347,7 +394,26 @@ public struct PiAILanguageModel: LanguageModel {
         "provider completed tool calls without a toolCalls finish reason"
       )
     }
-    return CollectedResponse(text: text, toolCalls: calls, content: content)
+    guard let terminalSnapshot, let finishReason else {
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider stream is missing terminal response state"
+      )
+    }
+    try validate(
+      terminalSnapshot,
+      finishReason: finishReason,
+      text: text,
+      toolCalls: calls,
+      streaming: false
+    )
+    let assistantMessage = calls.isEmpty ? nil : try terminalSnapshot.replayAssistantMessage()
+    return CollectedResponse(
+      text: text,
+      toolCalls: calls,
+      content: content,
+      assistantMessage: assistantMessage
+    )
   }
 
   private func validate(_ metadata: ProviderResponseMetadata) throws {
@@ -355,6 +421,50 @@ public struct PiAILanguageModel: LanguageModel {
       throw AIReasoningCoreError(
         .invalidProviderResponse,
         "provider response identity does not match the requested provider and model"
+      )
+    }
+  }
+
+  private func validate(_ snapshot: ProviderResponseSnapshot) throws {
+    guard snapshot.providerID == providerID, snapshot.modelID == modelID else {
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider response snapshot identity does not match the requested provider and model"
+      )
+    }
+  }
+
+  private func validate(
+    _ snapshot: ProviderResponseSnapshot,
+    finishReason: ProviderFinishReason,
+    text: String,
+    toolCalls: [ProviderToolCall],
+    streaming: Bool
+  ) throws {
+    guard snapshot.finishReason == finishReason else {
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider response snapshot finish reason does not match completion"
+      )
+    }
+    let snapshotText = snapshot.content.compactMap { item -> String? in
+      guard case .text(let value) = item else { return nil }
+      return value.text
+    }.joined()
+    let snapshotToolCalls = snapshot.content.compactMap { item -> ProviderToolCall? in
+      guard case .toolCall(let call) = item else { return nil }
+      return call
+    }
+    guard snapshotText == text, snapshotToolCalls == toolCalls else {
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider response snapshot does not match streamed content"
+      )
+    }
+    if streaming, !snapshotToolCalls.isEmpty {
+      throw AIReasoningCoreError(
+        .unsupportedStreamingToolCalls,
+        "AnyLanguageModel 0.9.0 cannot persist streaming tool calls"
       )
     }
   }
@@ -454,6 +564,7 @@ private struct CollectedResponse: Sendable {
   let text: String
   let toolCalls: [ProviderToolCall]
   let content: [ProviderAssistantContent]
+  let assistantMessage: ProviderAssistantMessage?
 }
 
 private struct ToolResolution: Sendable {
@@ -506,6 +617,9 @@ private enum ProviderMapper {
       switch item {
       case .text(let text):
         entries.append(.response(.init(assetIDs: [], segments: [.text(.init(content: text))])))
+      case .signedText(let text):
+        entries.append(
+          .response(.init(assetIDs: [], segments: [.text(.init(content: text.text))])))
       case .reasoning:
         throw AIReasoningCoreError(
           .invalidTranscript, "AnyLanguageModel cannot represent assistant reasoning content")

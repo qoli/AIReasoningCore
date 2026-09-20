@@ -26,6 +26,8 @@ final class PiAILanguageModelTests: XCTestCase {
         .responseStarted(metadata(for: request)),
         .textDelta("Hel"),
         .textDelta("lo"),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.text("Hello")], finishReason: .stop)),
         .completed(.stop),
       ]
     }
@@ -76,6 +78,12 @@ final class PiAILanguageModelTests: XCTestCase {
         .responseStarted(metadata(for: request)),
         .textDelta(#"{"answer":"ye"#),
         .textDelta(#"s"}"#),
+        .responseSnapshot(
+          responseSnapshot(
+            for: request,
+            content: [.text(#"{"answer":"yes"}"#)],
+            finishReason: .stop
+          )),
         .completed(.stop),
       ]
     }
@@ -94,6 +102,11 @@ final class PiAILanguageModelTests: XCTestCase {
   }
 
   func testToolCallExecutesAndContinuesProviderConversation() async throws {
+    let call = ProviderToolCall(
+      id: "call-1",
+      name: "echo",
+      arguments: .object(["value": .string("ping")])
+    )
     let runtime = FakeRuntime { request in
       if request.messages.contains(where: { if case .toolResult = $0 { true } else { false } }) {
         return responseEvents(for: request, text: "tool complete")
@@ -101,13 +114,9 @@ final class PiAILanguageModelTests: XCTestCase {
       return [
         .responseStarted(metadata(for: request)),
         .toolCallStarted(id: "call-1", name: "echo"),
-        .toolCallCompleted(
-          ProviderToolCall(
-            id: "call-1",
-            name: "echo",
-            arguments: .object(["value": .string("ping")])
-          )
-        ),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
         .completed(.toolCalls),
       ]
     }
@@ -132,20 +141,85 @@ final class PiAILanguageModelTests: XCTestCase {
 
   func testMixedAssistantTurnPreservesOrderThroughContinuationAndPersistedReplay() async throws {
     let firstCall = ProviderToolCall(
-      id: "call-1", name: "echo", arguments: .object(["value": .string("first")]))
+      id: "call-1",
+      name: "echo",
+      arguments: .object(["value": .string("first")]),
+      thoughtSignature: "thought-1",
+      namespace: "functions"
+    )
     let secondCall = ProviderToolCall(
-      id: "call-2", name: "echo", arguments: .object(["value": .string("second")]))
+      id: "call-2",
+      name: "echo",
+      arguments: .object(["value": .string("second")]),
+      thoughtSignature: "thought-2",
+      namespace: "functions"
+    )
     let expected: [ProviderAssistantContent] = [
-      .text("Checking now."), .toolCall(firstCall), .text("Also checking."),
-      .toolCall(secondCall), .text("Waiting."),
+      .reasoning(
+        ProviderReasoningContent(
+          text: "plan",
+          signature: "reasoning-signature",
+          providerMetadata: [:]
+        )),
+      .signedText(
+        ProviderTextContent(text: "Checking now.", signature: "text-signature-1")),
+      .toolCall(firstCall),
+      .signedText(
+        ProviderTextContent(text: "Also checking.", signature: "text-signature-2")),
+      .toolCall(secondCall),
+      .signedText(ProviderTextContent(text: "Waiting.", signature: "text-signature-3")),
     ]
     let runtime = FakeRuntime { request in
       if let resultIndex = request.messages.firstIndex(where: {
         if case .toolResult = $0 { true } else { false }
       }) {
-        XCTAssertEqual(request.messages[resultIndex - 1], .assistant(expected))
+        let isImmediateContinuation =
+          request.messages.last.map {
+            if case .toolResult = $0 { return true }
+            return false
+          } ?? false
+        if isImmediateContinuation {
+          guard case .assistantMessage(let message) = request.messages[resultIndex - 1] else {
+            throw TestFailure.missingReplayAssistantMessage
+          }
+          XCTAssertEqual(
+            message,
+            try responseSnapshot(
+              for: request,
+              content: expected,
+              finishReason: .toolCalls
+            ).replayAssistantMessage()
+          )
+        } else {
+          guard case .assistant(let content) = request.messages[resultIndex - 1] else {
+            throw TestFailure.missingPersistedAssistantMessage
+          }
+          XCTAssertEqual(
+            content,
+            [
+              .text("Checking now."),
+              .toolCall(
+                ProviderToolCall(
+                  id: firstCall.id,
+                  name: firstCall.name,
+                  arguments: firstCall.arguments
+                )),
+              .text("Also checking."),
+              .toolCall(
+                ProviderToolCall(
+                  id: secondCall.id,
+                  name: secondCall.name,
+                  arguments: secondCall.arguments
+                )),
+              .text("Waiting."),
+            ]
+          )
+        }
         XCTAssertEqual(
           request.messages.filter {
+            if case .assistantMessage(let message) = $0 {
+              return message.content.contains { if case .toolCall = $0 { true } else { false } }
+            }
             if case .assistant(let content) = $0 {
               return content.contains { if case .toolCall = $0 { true } else { false } }
             }
@@ -160,12 +234,17 @@ final class PiAILanguageModelTests: XCTestCase {
       }
       return [
         .responseStarted(metadata(for: request)),
+        .reasoningDelta("plan"),
+        .reasoningSignatureDelta("reasoning-signature"),
         .textDelta("Checking "), .textDelta("now."),
         .toolCallStarted(id: firstCall.id, name: firstCall.name),
         .textDelta("Also checking."),
         .toolCallStarted(id: secondCall.id, name: secondCall.name),
         .toolCallCompleted(secondCall), .toolCallCompleted(firstCall),
-        .textDelta("Waiting."), .completed(.toolCalls),
+        .textDelta("Waiting."),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: expected, finishReason: .toolCalls)),
+        .completed(.toolCalls),
       ]
     }
     let model = PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
@@ -189,7 +268,13 @@ final class PiAILanguageModelTests: XCTestCase {
       for json in [#"{"answer":"yes""#, #"{"answer":"yes"} trailing"#] {
         for streaming in [false, true] {
           let runtime = FakeRuntime { request in
-            [.responseStarted(metadata(for: request)), .textDelta(json), .completed(reason)]
+            [
+              .responseStarted(metadata(for: request)),
+              .textDelta(json),
+              .responseSnapshot(
+                responseSnapshot(for: request, content: [.text(json)], finishReason: reason)),
+              .completed(reason),
+            ]
           }
           let session = LanguageModelSession(
             model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
@@ -216,9 +301,16 @@ final class PiAILanguageModelTests: XCTestCase {
 
   private enum TestFailure: Error {
     case missingToolResults
+    case missingReplayAssistantMessage
+    case missingPersistedAssistantMessage
   }
 
   func testOneToolIterationAllowsFollowingFinalResponse() async throws {
+    let call = ProviderToolCall(
+      id: "call-1",
+      name: "echo",
+      arguments: .object(["value": .string("ping")])
+    )
     let runtime = FakeRuntime { request in
       if request.messages.contains(where: { if case .toolResult = $0 { true } else { false } }) {
         return responseEvents(for: request, text: "done")
@@ -226,13 +318,9 @@ final class PiAILanguageModelTests: XCTestCase {
       return [
         .responseStarted(metadata(for: request)),
         .toolCallStarted(id: "call-1", name: "echo"),
-        .toolCallCompleted(
-          ProviderToolCall(
-            id: "call-1",
-            name: "echo",
-            arguments: .object(["value": .string("ping")])
-          )
-        ),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
         .completed(.toolCalls),
       ]
     }
@@ -297,6 +385,8 @@ final class PiAILanguageModelTests: XCTestCase {
         .responseStarted(metadata(for: request)),
         .reasoningSignatureDelta("opaque-signature"),
         .textDelta("answer"),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.text("answer")], finishReason: .stop)),
         .completed(.stop),
       ]
     }
@@ -363,13 +453,14 @@ final class PiAILanguageModelTests: XCTestCase {
   }
 
   func testUnknownToolFailsExplicitly() async throws {
+    let call = ProviderToolCall(id: "call-1", name: "missing", arguments: .object([:]))
     let runtime = FakeRuntime { request in
       [
         .responseStarted(metadata(for: request)),
         .toolCallStarted(id: "call-1", name: "missing"),
-        .toolCallCompleted(
-          ProviderToolCall(id: "call-1", name: "missing", arguments: .object([:]))
-        ),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
         .completed(.toolCalls),
       ]
     }
@@ -425,6 +516,44 @@ final class PiAILanguageModelTests: XCTestCase {
       XCTFail("expected event ordering failure")
     } catch let error as AIReasoningCoreError {
       XCTAssertEqual(error.code, .invalidProviderResponse)
+    }
+  }
+
+  func testMissingAndMismatchedTerminalSnapshotsFailInBothModes() async throws {
+    for includesMismatchedSnapshot in [false, true] {
+      for streaming in [false, true] {
+        let runtime = FakeRuntime { request in
+          var events: [ProviderEvent] = [
+            .responseStarted(metadata(for: request)),
+            .textDelta("answer"),
+          ]
+          if includesMismatchedSnapshot {
+            events.append(
+              .responseSnapshot(
+                responseSnapshot(
+                  for: request,
+                  content: [.text("different")],
+                  finishReason: .stop
+                )))
+          }
+          events.append(.completed(.stop))
+          return events
+        }
+        let session = LanguageModelSession(
+          model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+        )
+
+        do {
+          if streaming {
+            _ = try await session.streamResponse(to: "Hello").collect()
+          } else {
+            _ = try await session.respond(to: "Hello")
+          }
+          XCTFail("expected terminal response snapshot validation failure")
+        } catch let error as AIReasoningCoreError {
+          XCTAssertEqual(error.code, .invalidProviderResponse)
+        }
+      }
     }
   }
 
@@ -559,6 +688,45 @@ private func responseEvents(for request: ProviderRequest, text: String) -> [Prov
   [
     .responseStarted(metadata(for: request)),
     .textDelta(text),
+    .responseSnapshot(
+      responseSnapshot(for: request, content: [.text(text)], finishReason: .stop)),
     .completed(.stop),
   ]
+}
+
+private func responseSnapshot(
+  for request: ProviderRequest,
+  content: [ProviderAssistantContent],
+  finishReason: ProviderFinishReason
+) -> ProviderResponseSnapshot {
+  ProviderResponseSnapshot(
+    responseID: "response",
+    providerID: request.providerID,
+    protocolID: "test-protocol",
+    modelID: request.modelID,
+    responseModelID: nil,
+    content: content.map { item in
+      switch item {
+      case .text(let text):
+        return .text(ProviderTextContent(text: text, signature: nil))
+      case .signedText(let text):
+        return .text(text)
+      case .reasoning(let reasoning):
+        return .reasoning(reasoning)
+      case .toolCall(let call):
+        return .toolCall(call)
+      }
+    },
+    usage: ProviderUsage(
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cachedInputTokens: 0,
+      totalTokens: 0,
+      providerMetadata: [:]
+    ),
+    finishReason: finishReason,
+    rawFinishReason: finishReason.rawValue,
+    timestampMilliseconds: 0
+  )
 }
