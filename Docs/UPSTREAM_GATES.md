@@ -69,6 +69,35 @@ override or release-tag requirement. Live provider results remain separate
 environmental evidence because credentials, quota, and provider service state
 cannot be deterministic release inputs.
 
+## Response identity regression verification
+
+pi-ai-swift response-start and terminal identity must retain the requested model;
+a server-reported alias is separate metadata. Core's exact identity validation
+remains in force. The consumer regression uses the actual custom provider runtime,
+its production Chat Completions adapter, and a sanitized upstream-derived alias
+fixture through `LanguageModelSession`, covering both respond and streaming. A
+test-only mutation of normalized start identity must still be rejected.
+
+Run the optional cross-repository probe from this checkout:
+
+```sh
+python3 Scripts/check-provider-identity.py --pi /Volumes/Data/Github/pi-ai-swift
+```
+
+The probe copies Core sources and its manifest to a temporary harness, replacing
+only that harness's pi-ai-swift dependency with the supplied checkout. It uses
+the supplied checkout's `response-rich.json` identity fixture and dummy credentials;
+the transport cannot call a provider. SwiftPM may fetch build dependencies.
+Neither repository's manifest, resolution snapshots, or dependency checkouts are
+edited. Consumer assertions live in
+`IntegrationTests/ProviderIdentity/ConsumerResponseIdentityTests.swift`.
+
+This is local integration evidence. The repair was pushed to pi-ai-swift `main`
+as `60d47d489435fca8f2737d1ebc7d6d78505a881d`; the existing package resolution
+snapshots do not contain that commit. Remote-main refresh and product acceptance
+remain separate follow-up work; this probe does not establish that SwiftChat has
+received it.
+
 ## Typed reasoning effort integration (resolved)
 
 Core adopts `ProviderReasoningEffort` and model-specific
