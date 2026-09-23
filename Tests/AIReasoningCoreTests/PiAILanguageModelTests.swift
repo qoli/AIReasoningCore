@@ -101,6 +101,55 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(partialAnswers, [nil, "yes"])
   }
 
+  func testToolSchemaMaterializesRootAndPreservesNestedDefinitions() async throws {
+    let schema = try JSONDecoder().decode(
+      GenerationSchema.self,
+      from: Data(
+        ##"{"$ref":"#/$defs/Arguments","$defs":{"Arguments":{"type":"object","properties":{"location":{"$ref":"#/$defs/Location"}},"required":["location"]},"Location":{"type":"object","properties":{"latitude":{"type":"number"}},"required":["latitude"]}}}"##
+          .utf8))
+    let runtime = FakeRuntime { request in
+      guard case .object(let root) = request.tools.first?.inputSchema,
+        case .object(let properties) = root["properties"],
+        case .object(let definitions) = root["$defs"]
+      else { throw TestFailure.missingToolResults }
+      XCTAssertNil(root["$ref"])
+      XCTAssertEqual(root["type"], .string("object"))
+      XCTAssertEqual(root["required"], .array([.string("location")]))
+      XCTAssertEqual(properties["location"], .object(["$ref": .string("#/$defs/Location")]))
+      XCTAssertNotNil(definitions["Location"])
+      return responseEvents(for: request, text: "ready")
+    }
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+      tools: [SchemaTool(parameters: schema)])
+    _ = try await session.respond(to: "Check tools")
+    _ = try await session.streamResponse(to: "Check tools").collect()
+  }
+
+  func testUnsupportedToolSchemaRootsFailBeforeProviderRequest() async throws {
+    let schemas = [
+      ##"{"$ref":"#/$defs/Missing"}"##,
+      ##"{"$ref":"#/$defs/Loop","$defs":{"Loop":{"$ref":"#/$defs/Loop"}}}"##,
+      ##"{"type":"string"}"##,
+    ]
+    for json in schemas {
+      let schema = try JSONDecoder().decode(GenerationSchema.self, from: Data(json.utf8))
+      let runtime = FakeRuntime { request in
+        XCTFail("Invalid tool schema must fail before calling the provider")
+        return responseEvents(for: request, text: "unexpected")
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        tools: [SchemaTool(parameters: schema)])
+      do {
+        _ = try await session.respond(to: "Check tools")
+        XCTFail("Expected unsupported tool schema")
+      } catch let error as AIReasoningCoreError {
+        XCTAssertEqual(error.code, .unsupportedOperation)
+      }
+    }
+  }
+
   func testToolCallExecutesAndContinuesProviderConversation() async throws {
     let call = ProviderToolCall(
       id: "call-1",
@@ -632,6 +681,14 @@ private struct EchoTool: Tool {
   func call(arguments: Arguments) async throws -> String {
     arguments.value
   }
+}
+
+private struct SchemaTool: Tool {
+  let name = "schema_tool"
+  let description = "Exercise dynamically supplied tool schemas"
+  let parameters: GenerationSchema
+
+  func call(arguments: GeneratedContent) async throws -> String { "unused" }
 }
 
 private struct FakeRuntime: ProviderRuntime {

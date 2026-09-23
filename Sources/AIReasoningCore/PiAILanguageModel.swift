@@ -648,9 +648,37 @@ private enum ProviderMapper {
       ProviderToolDefinition(
         name: tool.name,
         description: tool.description,
-        inputSchema: try encodedJSONValue(tool.parameters)
+        inputSchema: try toolInputSchema(tool.parameters)
       )
     }
+  }
+
+  private static func toolInputSchema(_ schema: GenerationSchema) throws
+    -> PiAIProviderRuntime.JSONValue
+  {
+    guard case .object(var root) = try encodedJSONValue(schema) else {
+      throw AIReasoningCoreError(.unsupportedOperation, "tool input schema must be an object")
+    }
+    let definitions = root["$defs"]
+    var visited: Set<String> = []
+    while let reference = root["$ref"] {
+      guard case .string(let path) = reference, path.hasPrefix("#/$defs/"),
+        visited.insert(path).inserted,
+        case .object(let entries) = definitions,
+        case .object(let resolved) = entries[String(path.dropFirst("#/$defs/".count))]
+      else {
+        throw AIReasoningCoreError(
+          .unsupportedOperation, "tool input schema has an unsupported or unresolved root reference"
+        )
+      }
+      root = resolved
+    }
+    guard root["type"] == .string("object") else {
+      throw AIReasoningCoreError(
+        .unsupportedOperation, "tool input schema root must have type object")
+    }
+    if let definitions { root["$defs"] = definitions }
+    return .object(root)
   }
 
   static func options<Content: Generable>(

@@ -32,6 +32,11 @@ interface around it.
   cache affinity, service tier, provider options, and native tool choice.
   Reasoning effort uses pi-ai-swift's `ProviderReasoningEffort`; model-specific
   choices and rejection of unsupported values are owned by that runtime.
+- Tool schema mapping materializes AnyLanguageModel's local root `$ref` into
+  an object before passing it to the provider runtime, preserving `$defs` for
+  nested references. Unresolved, cyclic, or non-object roots fail explicitly.
+  This prevents providers that read root properties from receiving an empty
+  tool signature. It does not claim all providers preserve nested references.
 - Non-streaming provider tool calls are executed through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
   Mixed text/tool turns retain content order, including text between tool calls.
