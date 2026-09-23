@@ -1,6 +1,15 @@
 {
-  "originHash" : "e820d4bf77eca4ced05a0a0b0dbfeeca316f085aab74ddbd43e8e6f61f42e7a9",
+  "originHash" : "1294f01da5365d0a8a9122dd4a28ba4f3ca897b576e5c91dd778c2f384a238b4",
   "pins" : [
+    {
+      "identity" : "aireasoningcore",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/qoli/AIReasoningCore.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "99b1df56e72eca5d9bf6ec07d223718f985f1476"
+      }
+    },
     {
       "identity" : "anylanguagemodel",
       "kind" : "remoteSourceControl",
@@ -8,6 +17,14 @@
       "state" : {
         "revision" : "f22b78e6b10f67e7d46c67dc59a8a35bc259fbce",
         "version" : "0.9.0"
+      }
+    },
+    {
+      "identity" : "axswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tisfeng/AXSwift.git",
+      "state" : {
+        "revision" : "d737b605c99f6e0f6a21448d0836110bd15b7710"
       }
     },
     {
@@ -51,8 +68,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "a0cb0954ecb21e4e31b0070e6ed5674e8556685a",
-        "version" : "1.6.0"
+        "revision" : "a66de878e87ef5a3d5d390e0f6d9002aa5541a43",
+        "version" : "1.7.0"
       }
     },
     {
@@ -62,6 +79,15 @@
       "state" : {
         "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
         "version" : "602.0.0"
+      }
+    },
+    {
+      "identity" : "swiftui-introspect",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/siteline/swiftui-introspect",
+      "state" : {
+        "revision" : "a37eca1db7bebc9437ee89508e7b4433ff34adb4",
+        "version" : "27.0.0"
       }
     }
   ],
