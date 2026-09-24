@@ -3,6 +3,67 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## Display reasoning (implemented locally; upstream publication pending)
+
+AnyLanguageModel main `6136ad3a3c9bc418ded7d29ac37ec4862671f68a` has no
+public display-reasoning field. The independent checkout
+`/Volumes/Data/Github/AnyLanguageModel-reasoning` contains the proposed patch:
+
+- `LanguageModelSession.Response.reasoning: String?`;
+- `LanguageModelSession.ResponseStream.Snapshot.reasoning: String?`;
+- trailing `reasoning: String? = nil` initializer arguments, including the
+  single-value response stream, preserving existing source calls;
+- forwarding through stream collection and schema conversion without changing
+  tool execution or Transcript types;
+- a demonstrated cancellation repair: `wrapStream` checks cancellation after
+  the upstream loop before committing the final response. A cancelled
+  `AsyncThrowingStream` can otherwise appear to end normally and commit its
+  last partial snapshot (including a reasoning-only empty answer).
+
+The value is cumulative provider-public display text for one generation,
+including its tool rounds. `nil` means no display text was supplied. It is not
+opaque replay data, a token count, or model-facing conversation context.
+
+Core and SwiftChat source changes require this unpublished contract. Their
+normal remote dependency graphs cannot yet build these changes. No local
+override is installed in the repository manifests or lockfiles. Local evidence
+must use a disposable integration setup, for example:
+
+```sh
+python3 Scripts/check-display-reasoning.py \
+  --any-language-model /Volumes/Data/Github/AnyLanguageModel-reasoning --ios
+```
+
+The remaining publication sequence is: upstream accepts/publishes the contract,
+Core resolves that revision and passes ordinary checks, Core is independently
+published, then SwiftChat resolves the published revisions and repeats its
+checks. The user authorized publication on 2026-09-25. The upstream patch is
+submitted as [AnyLanguageModel PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264),
+from `qoli/AnyLanguageModel` commit `9265b9d` on `codex/display-reasoning`.
+Core and SwiftChat remain dependent draft changes until that contract is merged;
+publishing a review branch does not satisfy the remote-main integration gate.
+Local integration results must not be reported as remote-main acceptance.
+
+Local verification on 2026-09-25:
+
+- AnyLanguageModel: 562 deterministic tests passed, including six reasoning
+  tests. Live provider tests were skipped and Ollama integration tests excluded.
+  An initial unfiltered run attempted localhost Ollama and failed with connection
+  refused; it supplied no model response and is not acceptance evidence.
+- Core: 45 tests passed; formatting, generic iOS Simulator build and whitespace
+  checks passed. This includes cumulative reasoning, unchanged-answer updates,
+  final collection, tool rounds/replay/execution count, stopped tools, structured
+  object and scalar output, cancellation, terminal mismatch, and usage-only input.
+- SwiftChat: 24 coordinator tests, macOS build, iOS Simulator build, and both
+  renderer fixtures passed. Tests cover separate bridge deltas, presentation
+  persistence/reopening, exclusion from follow-up model requests, and completion.
+- Both integration harnesses resolved published pi-ai-swift/main
+  `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`; pi-ai-swift was not modified.
+
+Core evidence is in `/tmp/AIReasoningCore-reasoning-{test,ios,format}.log`.
+App evidence is in `/tmp/SwiftChat-reasoning-{macOS-test,iOS}-final.log`.
+These are local build/test results, not live provider or native-window acceptance.
+
 ## AnyLanguageModel contract-only product
 
 AnyLanguageModel `main` at `1f6641a2ffa1f54923b0812fbbffe84fd9fdfbc8`

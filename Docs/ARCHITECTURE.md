@@ -56,6 +56,20 @@ interface around it.
 - Structured streaming snapshots may contain partial JSON. Final structured
   responses must pass complete JSON validation before conversion to the requested
   type; truncated JSON is rejected even if the partial parser could repair it.
+- Display reasoning uses the proposed AnyLanguageModel `Response.reasoning`
+  and `ResponseStream.Snapshot.reasoning` optional string contract (publication
+  gate below). It accumulates the nonempty `reasoningDelta` strings in event
+  order across every provider round of one generation, without inserted separators.
+  A new generation starts at `nil`. Reasoning-only updates yield snapshots even
+  when answer text is unchanged. Answer content remains scoped to its provider
+  round as before. Before structured fields arrive, an empty structure is used
+  only if the requested partial type can represent it; otherwise reasoning is
+  retained until a representable answer snapshot exists. Reasoning never enters
+  JSON parsing, transcript entries, or provider-message reconstruction.
+- Display reasoning does not expose `reasoningSignatureDelta`, terminal opaque
+  metadata, redacted payloads, or usage counts. The validated terminal snapshot
+  remains the sole source for immediate tool-continuation replay. App-owned
+  presentation persistence is separate from model-facing transcript persistence.
 - `ConversationStore` atomically persists `Transcript` plus opaque provider state.
   Both loading and listing validate the persisted schema version.
 - `AssetStore` atomically persists generated images, files and browser snapshots.
