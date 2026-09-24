@@ -65,18 +65,29 @@ final class PiAILanguageModelTests: XCTestCase {
     let session = LanguageModelSession(model: model)
     var snapshots: [LanguageModelSession.ResponseStream<String>.Snapshot] = []
     for try await snapshot in session.streamResponse(to: "Hello") { snapshots.append(snapshot) }
-    XCTAssertEqual(snapshots.map(\.content), ["", "", "answer"])
-    XCTAssertEqual(snapshots.map(\.reasoning), ["plan ", "plan step", "plan step"])
+    XCTAssertEqual(snapshots.map(\.content), ["", "", "answer", "answer"])
+    XCTAssertEqual(
+      snapshots.map { visibleReasoning($0.transcriptEntries) },
+      ["plan ", "plan step", "plan step", "plan step"])
+    XCTAssertEqual(
+      Set(snapshots.compactMap { reasoningEntries($0.transcriptEntries).first?.id }).count, 1)
+    XCTAssertEqual(
+      reasoningEntries(snapshots.last!.transcriptEntries).first?.signature,
+      Data("opaque-secret".utf8))
     for streaming in [false, true] {
       let fresh = LanguageModelSession(model: model)
       let response =
         try await streaming
         ? fresh.streamResponse(to: "Hello").collect() : fresh.respond(to: "Hello")
       XCTAssertEqual(response.content, "answer")
-      XCTAssertEqual(response.reasoning, "plan step")
+      XCTAssertEqual(visibleReasoning(response.transcriptEntries), "plan step")
       let transcript = String(decoding: try JSONEncoder().encode(fresh.transcript), as: UTF8.self)
-      XCTAssertFalse(transcript.contains("plan step"))
-      XCTAssertFalse(transcript.contains("opaque-secret"))
+      XCTAssertTrue(transcript.contains("plan step"))
+      let entries = reasoningEntries(fresh.transcript)
+      XCTAssertEqual(entries.count, 1)
+      XCTAssertEqual(entries.first?.signature, Data("opaque-secret".utf8))
+      let restored = try JSONDecoder().decode(Transcript.self, from: Data(transcript.utf8))
+      XCTAssertEqual(reasoningEntries(restored), entries)
     }
   }
 
@@ -100,7 +111,12 @@ final class PiAILanguageModelTests: XCTestCase {
             .responseStarted(metadata(for: request)), .reasoningDelta("second"),
             .textDelta("answer"),
             .responseSnapshot(
-              responseSnapshot(for: request, content: [.text("answer")], finishReason: .stop)),
+              responseSnapshot(
+                for: request,
+                content: [
+                  .reasoning(.init(text: "second", signature: nil, providerMetadata: [:])),
+                  .text("answer"),
+                ], finishReason: .stop)),
             .completed(.stop),
           ]
         }
@@ -124,17 +140,24 @@ final class PiAILanguageModelTests: XCTestCase {
           snapshots.append(snapshot)
         }
         XCTAssertEqual(
-          snapshots.map(\.reasoning), ["first ", "first ", "first second", "first second"])
-        XCTAssertEqual(snapshots.map(\.content), ["", "", "", "answer"])
-        XCTAssertEqual(snapshots.last?.transcriptEntries.count, 2)
+          snapshots.map { visibleReasoning($0.transcriptEntries) },
+          ["first ", "first ", "first ", "first second", "first second"])
+        XCTAssertEqual(snapshots.map(\.content), ["", "", "", "", "answer"])
+        XCTAssertEqual(snapshots.last?.transcriptEntries.count, 4)
       } else {
         let response = try await session.respond(to: "Use tool")
-        XCTAssertEqual(response.reasoning, "first second")
+        XCTAssertEqual(visibleReasoning(response.transcriptEntries), "first second")
         XCTAssertEqual(response.content, "answer")
       }
       let count = await executions.count
       XCTAssertEqual(count, 1)
-      XCTAssertEqual(session.transcript.count, 4)
+      XCTAssertEqual(session.transcript.count, 6)
+      let blocks = reasoningEntries(session.transcript)
+      XCTAssertEqual(blocks.count, 2)
+      XCTAssertNotEqual(blocks[0].id, blocks[1].id)
+      XCTAssertEqual(blocks[0].signature, Data("opaque-signature".utf8))
+      XCTAssertEqual(
+        blocks[0].metadata["pi-ai-swift.providerMetadata"]?.jsonString, #"{"opaque":"state"}"#)
     }
   }
 
@@ -145,7 +168,13 @@ final class PiAILanguageModelTests: XCTestCase {
         .textDelta(#"{"answer":"yes"}"#), .reasoningDelta(" after answer"),
         .responseSnapshot(
           responseSnapshot(
-            for: request, content: [.text(#"{"answer":"yes"}"#)], finishReason: .stop)),
+            for: request,
+            content: [
+              .reasoning(
+                .init(text: "not JSON { reasoning", signature: nil, providerMetadata: [:])),
+              .text(#"{"answer":"yes"}"#),
+              .reasoning(.init(text: " after answer", signature: nil, providerMetadata: [:])),
+            ], finishReason: .stop)),
         .completed(.stop),
       ]
     }
@@ -159,7 +188,9 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(snapshots.count, 3)
     XCTAssertNil(snapshots.first?.content.answer)
     XCTAssertEqual(snapshots.last?.content.answer, "yes")
-    XCTAssertEqual(snapshots.last?.reasoning, "not JSON { reasoning after answer")
+    XCTAssertEqual(
+      snapshots.last.map { visibleReasoning($0.transcriptEntries) } ?? nil,
+      "not JSON { reasoning after answer")
     for streaming in [false, true] {
       let session = LanguageModelSession(model: model)
       let response =
@@ -167,7 +198,8 @@ final class PiAILanguageModelTests: XCTestCase {
         ? session.streamResponse(to: "Answer", generating: StructuredAnswer.self).collect()
         : session.respond(to: "Answer", generating: StructuredAnswer.self)
       XCTAssertEqual(response.content.answer, "yes")
-      XCTAssertEqual(response.reasoning, "not JSON { reasoning after answer")
+      XCTAssertEqual(
+        visibleReasoning(response.transcriptEntries), "not JSON { reasoning after answer")
     }
   }
 
@@ -187,7 +219,7 @@ final class PiAILanguageModelTests: XCTestCase {
     let model = PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
     let response = try await LanguageModelSession(model: model).streamResponse(to: "Answer")
       .collect()
-    XCTAssertNil(response.reasoning)
+    XCTAssertNil(visibleReasoning(response.transcriptEntries))
     XCTAssertEqual(response.content, "answer")
   }
 
@@ -216,7 +248,12 @@ final class PiAILanguageModelTests: XCTestCase {
       [
         .responseStarted(metadata(for: request)), .reasoningDelta("counting"), .textDelta("42"),
         .responseSnapshot(
-          responseSnapshot(for: request, content: [.text("42")], finishReason: .stop)),
+          responseSnapshot(
+            for: request,
+            content: [
+              .reasoning(.init(text: "counting", signature: nil, providerMetadata: [:])),
+              .text("42"),
+            ], finishReason: .stop)),
         .completed(.stop),
       ]
     }
@@ -228,7 +265,7 @@ final class PiAILanguageModelTests: XCTestCase {
     }
     // Int cannot represent an absent value; never invent a zero to deliver reasoning.
     XCTAssertEqual(snapshots.map(\.content), [42])
-    XCTAssertEqual(snapshots.map(\.reasoning), ["counting"])
+    XCTAssertEqual(snapshots.map { visibleReasoning($0.transcriptEntries) }, ["counting"])
   }
 
   func testStoppedToolRetainsReasoningWithoutExecuting() async throws {
@@ -241,7 +278,12 @@ final class PiAILanguageModelTests: XCTestCase {
           .responseStarted(metadata(for: request)), .reasoningDelta("plan"),
           .toolCallStarted(id: call.id, name: call.name), .toolCallCompleted(call),
           .responseSnapshot(
-            responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
+            responseSnapshot(
+              for: request,
+              content: [
+                .reasoning(.init(text: "plan", signature: nil, providerMetadata: [:])),
+                .toolCall(call),
+              ], finishReason: .toolCalls)),
           .completed(.toolCalls),
         ]
       }
@@ -252,7 +294,7 @@ final class PiAILanguageModelTests: XCTestCase {
       let response =
         try await streaming
         ? session.streamResponse(to: "Stop").collect() : session.respond(to: "Stop")
-      XCTAssertEqual(response.reasoning, "plan")
+      XCTAssertEqual(visibleReasoning(response.transcriptEntries), "plan")
       XCTAssertEqual(response.content, "")
       let count = await counter.count
       XCTAssertEqual(count, 0)
@@ -269,7 +311,7 @@ final class PiAILanguageModelTests: XCTestCase {
     let consumer = Task {
       for try await snapshot in session.streamResponse(to: "Wait") {
         XCTAssertEqual(snapshot.content, "")
-        XCTAssertEqual(snapshot.reasoning, "planning")
+        XCTAssertEqual(visibleReasoning(snapshot.transcriptEntries), "planning")
         received.fulfill()
       }
     }
@@ -277,16 +319,85 @@ final class PiAILanguageModelTests: XCTestCase {
     consumer.cancel()
     await fulfillment(of: [stopped], timeout: 2)
     _ = await consumer.result
-    // Cancelling the consumer ends its iterator before the relay task finishes cleanup.
-    let cleanedUp = expectation(description: "session cleanup")
-    let cleanupObserver = Task {
-      while session.isResponding && !Task.isCancelled { await Task.yield() }
-      if !Task.isCancelled { cleanedUp.fulfill() }
-    }
-    await fulfillment(of: [cleanedUp], timeout: 2)
-    cleanupObserver.cancel()
+    await session.waitForResponseCompletion()
     XCTAssertFalse(session.isResponding)
     XCTAssertEqual(session.transcript.count, 1)
+  }
+
+  func testRedactedReasoningHasNoVisibleSegmentsAndReplaysAfterCodableRoundTrip() async throws {
+    let hidden = ProviderReasoningContent(
+      text: "opaque-redacted-payload", signature: "signed-redacted", isRedacted: true,
+      providerMetadata: ["nested": .object(["number": .integer(7)])])
+    for streaming in [false, true] {
+      let runtime = FakeRuntime { request in
+        if request.messages.contains(where: { message in
+          if case .assistant(let content) = message {
+            return content.contains(.reasoning(hidden))
+          }
+          return false
+        }) {
+          return responseEvents(for: request, text: "replayed")
+        }
+        return [
+          .responseStarted(metadata(for: request)), .reasoningSignatureDelta("signed-redacted"),
+          .textDelta("answer"),
+          .responseSnapshot(
+            responseSnapshot(
+              for: request, content: [.reasoning(hidden), .text("answer")], finishReason: .stop)),
+          .completed(.stop),
+        ]
+      }
+      let model = PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+      let session = LanguageModelSession(model: model)
+      let response =
+        try await streaming
+        ? session.streamResponse(to: "Answer").collect() : session.respond(to: "Answer")
+      XCTAssertEqual(response.content, "answer")
+      XCTAssertNil(visibleReasoning(response.transcriptEntries))
+      let block = try XCTUnwrap(reasoningEntries(session.transcript).first)
+      XCTAssertTrue(block.segments.isEmpty)
+      XCTAssertEqual(block.signature, Data("signed-redacted".utf8))
+      let restored = try JSONDecoder().decode(
+        Transcript.self, from: JSONEncoder().encode(session.transcript))
+      XCTAssertEqual(reasoningEntries(restored), [block])
+      let replay = LanguageModelSession(model: model, transcript: restored)
+      let next = try await replay.respond(to: "Continue")
+      XCTAssertEqual(next.content, "replayed")
+    }
+  }
+
+  func testCancellationPreservesToolCheckpointAndPartialReasoningWithoutAnswer() async throws {
+    let received = expectation(description: "second round reasoning received")
+    let stopped = expectation(description: "second round provider cancelled")
+    let executions = ExecutionCounter()
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(
+        runtime: ToolCheckpointRuntime(providerStopped: stopped), providerID: "test",
+        modelID: "model"),
+      tools: [CountingEchoTool(counter: executions)])
+    session.transcriptErrorHandlingPolicy = .preserveTranscript
+    let consumer = Task {
+      for try await snapshot in session.streamResponse(to: "Use tool") {
+        if visibleReasoning(snapshot.transcriptEntries) == "completed planpartial next plan" {
+          received.fulfill()
+        }
+      }
+    }
+    await fulfillment(of: [received], timeout: 2)
+    consumer.cancel()
+    _ = await consumer.result
+    await fulfillment(of: [stopped], timeout: 2)
+    await session.waitForResponseCompletion()
+    XCTAssertFalse(session.isResponding)
+    XCTAssertEqual(visibleReasoning(session.transcript), "completed planpartial next plan")
+    XCTAssertEqual(session.transcript.count, 5)
+    guard session.transcript.count == 5,
+      case .reasoning = session.transcript[1],
+      case .toolCalls = session.transcript[2], case .toolOutput = session.transcript[3],
+      case .reasoning = session.transcript[4]
+    else { return XCTFail("expected committed reasoning and executed tool checkpoint") }
+    let count = await executions.count
+    XCTAssertEqual(count, 1)
   }
 
   func testReasoningSelectionPreservesDefaultOffAndTypedEffortInBothModes() async throws {
@@ -492,6 +603,7 @@ final class PiAILanguageModelTests: XCTestCase {
           XCTAssertEqual(
             content,
             [
+              expected[0],
               .text("Checking now."),
               .toolCall(
                 ProviderToolCall(
@@ -546,8 +658,9 @@ final class PiAILanguageModelTests: XCTestCase {
     let session = LanguageModelSession(model: model, tools: [EchoTool()])
     let response = try await session.respond(to: "Check both")
     XCTAssertEqual(response.content, "done")
-    XCTAssertEqual(session.transcript.count, 9)
-    guard case .response(let preamble) = session.transcript[1],
+    XCTAssertEqual(session.transcript.count, 10)
+    guard case .reasoning = session.transcript[1],
+      case .response(let preamble) = session.transcript[2],
       case .text(let text) = preamble.segments.first
     else { return XCTFail("expected persisted preamble") }
     XCTAssertEqual(text.content, "Checking now.")
@@ -805,7 +918,7 @@ final class PiAILanguageModelTests: XCTestCase {
     var snapshots: [LanguageModelSession.ResponseStream<String>.Snapshot] = []
     for try await snapshot in session.streamResponse(to: "Use echo") { snapshots.append(snapshot) }
 
-    XCTAssertEqual(snapshots.map(\.content), ["checking", "", "done"])
+    XCTAssertEqual(snapshots.map(\.content), ["checking", "", "", "done"])
     XCTAssertEqual(snapshots.last?.transcriptEntries.count, 3)
     XCTAssertEqual(session.transcript.count, 5)
     guard case .response(let preamble) = session.transcript[1],
@@ -834,6 +947,7 @@ final class PiAILanguageModelTests: XCTestCase {
     consumer.cancel()
     await fulfillment(of: [providerStopped], timeout: 2)
     _ = await consumer.result
+    await session.waitForResponseCompletion()
     XCTAssertFalse(session.isResponding)
   }
 
@@ -1170,4 +1284,60 @@ private struct StopTools: ToolExecutionDelegate {
   func toolCallDecision(for toolCall: Transcript.ToolCall, in session: LanguageModelSession) async
     -> ToolExecutionDecision
   { .stop }
+}
+
+private func reasoningEntries<S: Sequence>(_ entries: S) -> [Transcript.Reasoning]
+where S.Element == Transcript.Entry {
+  entries.compactMap { entry in
+    if case .reasoning(let value) = entry { return value }
+    return nil
+  }
+}
+
+private func visibleReasoning<S: Sequence>(_ entries: S) -> String?
+where S.Element == Transcript.Entry {
+  let text = reasoningEntries(entries).flatMap(\.segments).compactMap { segment -> String? in
+    if case .text(let value) = segment { return value.content }
+    return nil
+  }.joined()
+  return text.isEmpty ? nil : text
+}
+
+private struct ToolCheckpointRuntime: ProviderRuntime {
+  let providerStopped: XCTestExpectation
+  func catalog() async throws -> ProviderCatalog {
+    ProviderCatalog(revision: "test", providers: [])
+  }
+  func authorize(
+    _ operation: AuthorizationOperation, interaction: @escaping AuthorizationInteraction
+  ) async throws -> AuthorizationState {
+    switch operation {
+    case .login(let id, _), .logout(let id): return .disconnected(providerID: id)
+    }
+  }
+  func stream(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderEvent, any Error> {
+    if request.messages.contains(where: { if case .toolResult = $0 { true } else { false } }) {
+      return AsyncThrowingStream { continuation in
+        continuation.yield(.responseStarted(metadata(for: request)))
+        continuation.yield(.reasoningDelta("partial next plan"))
+        continuation.onTermination = { _ in providerStopped.fulfill() }
+      }
+    }
+    let call = ProviderToolCall(
+      id: "checkpoint-call", name: "echo", arguments: .object(["value": .string("done")]))
+    return FakeRuntime { request in
+      [
+        .responseStarted(metadata(for: request)), .reasoningDelta("completed plan"),
+        .toolCallStarted(id: call.id, name: call.name), .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(
+            for: request,
+            content: [
+              .reasoning(
+                .init(text: "completed plan", signature: "signature", providerMetadata: [:])),
+              .toolCall(call),
+            ], finishReason: .toolCalls)), .completed(.toolCalls),
+      ]
+    }.stream(request)
+  }
 }

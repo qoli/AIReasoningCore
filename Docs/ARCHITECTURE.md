@@ -56,19 +56,27 @@ interface around it.
 - Structured streaming snapshots may contain partial JSON. Final structured
   responses must pass complete JSON validation before conversion to the requested
   type; truncated JSON is rejected even if the partial parser could repair it.
-- Display reasoning uses the maintained AnyLanguageModel fork's `Response.reasoning`
-  and `ResponseStream.Snapshot.reasoning` optional string contract. It accumulates
-  the nonempty `reasoningDelta` strings in event order across every provider round of one generation, without inserted separators.
-  A new generation starts at `nil`. Reasoning-only updates yield snapshots even
-  when answer text is unchanged. Answer content remains scoped to its provider
-  round as before. Before structured fields arrive, an empty structure is used
-  only if the requested partial type can represent it; otherwise reasoning is
-  retained until a representable answer snapshot exists. Reasoning never enters
-  JSON parsing, transcript entries, or provider-message reconstruction.
-- Display reasoning does not expose `reasoningSignatureDelta`, terminal opaque
-  metadata, redacted payloads, or usage counts. The validated terminal snapshot
-  remains the sole source for immediate tool-continuation replay. App-owned
-  presentation persistence is separate from model-facing transcript persistence.
+- Reasoning uses the maintained fork's FM27-shaped `Transcript.Entry.reasoning`
+  and `Transcript.Reasoning`, carried in cumulative `transcriptEntries`. Stable
+  entry and text-segment IDs identify updates within a provider round; completed
+  rounds retain their entries. `response.content` contains only the answer.
+  Empty structured snapshots are emitted only when the requested partial type
+  can represent them; scalar reasoning waits for a representable answer.
+- Terminal reasoning blocks supply authoritative signatures and provider metadata.
+  Signature delta events are not concatenated: their provider-dependent fragment
+  semantics belong to pi-ai-swift. Core copies terminal signature strings to
+  opaque UTF-8 `Data`, and preserves provider metadata and optional redaction flags
+  under `pi-ai-swift.*` metadata keys. Redacted payloads have no display segments.
+  Codable transcript restoration reconstructs these reasoning blocks for provider
+  replay. Signed answer text and tool-specific opaque fields still have separate
+  upstream representation gaps.
+- Streaming checkpoints include tool calls before execution and each completed
+  tool output. The explicit session `.preserveTranscript` error policy retains
+  the latest checkpoint without fabricating a completed answer. Callers cancel
+  their consumer and await the fork's `waitForResponseCompletion()` before saving.
+  A cancellation cannot roll back external tool side effects; an unfinished tool
+  has no fabricated output. The session policy and drain API belong to
+  AnyLanguageModel, not the provider runtime.
 - `ConversationStore` atomically persists `Transcript` plus opaque provider state.
   Both loading and listing validate the persisted schema version.
 - `AssetStore` atomically persists generated images, files and browser snapshots.

@@ -86,15 +86,19 @@ environmental evidence and do not replace deterministic fixtures.
 
 ## AnyLanguageModel integration limits
 
-- The adopted AnyLanguageModel `main` revision carries streaming tool entries
-  into the session transcript and forwards consumer cancellation. A cancelled
-  or failed stream does not commit partial tool history even if a tool already
-  ran; callers must treat its side effects as uncertain and avoid automatic retry.
+- The maintained fork uses FM27-shaped reasoning transcript entries and explicit
+  streaming error policies. With `.preserveTranscript`, callers can retain the
+  latest reasoning/tool checkpoint and await `waitForResponseCompletion()` before
+  saving. No partial answer is committed as a successful response. Non-streaming
+  failures have no partial checkpoint channel; tool side effects are not rolled back.
+- Reasoning text, opaque signature, redaction and provider metadata survive
+  transcript persistence. Answer text stays separate. Signed answer text, tool
+  thought signatures, response identity and other opaque assistant state still
+  lack full transcript representation.
 - Session-generated response transcript entries always use empty asset IDs.
   Provider assets are persisted to `AssetStore`, outside `Transcript`.
-- Provider response IDs, reasoning signatures, usage and opaque provider state
-  have no representation in `Transcript`; persistent provider continuation
-  remains a provider-runtime responsibility.
+- Formal dependency pins consume the published maintained fork. See
+  [upstream gates](Docs/UPSTREAM_GATES.md) for exact revisions and verification.
 
 ## License
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Core with the candidate AnyLanguageModel display-reasoning patch.
+"""Verify Core with the candidate AnyLanguageModel transcript-reasoning patch.
 
 Creates a disposable source copy; never changes a checkout or its resolution.
 Only dependency resolution uses the network. Tests do not call live providers.
@@ -29,7 +29,7 @@ def main():
     if count != 1:
         raise SystemExit("expected one remote AnyLanguageModel/main dependency")
     # Retain logs and the exact resolved provider revision for review.
-    root = pathlib.Path(tempfile.mkdtemp(prefix="core-display-reasoning-"))
+    root = pathlib.Path(tempfile.mkdtemp(prefix="core-transcript-reasoning-"))
     print(f"Integration evidence: {root}", flush=True)
     (root / "Package.swift").write_text(manifest)
     for directory in ("Sources", "Tests"):

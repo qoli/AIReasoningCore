@@ -75,7 +75,6 @@ public struct PiAILanguageModel: LanguageModel {
       custom: providerOptions
     )
     var transcriptEntries: [Transcript.Entry] = []
-    var reasoning: String?
 
     var toolIterations = 0
     while true {
@@ -88,7 +87,6 @@ public struct PiAILanguageModel: LanguageModel {
         options: generationOptions
       )
       let result = try await collect(runtime.stream(request))
-      if let delta = result.reasoning { reasoning = (reasoning ?? "") + delta }
 
       if !result.toolCalls.isEmpty {
         guard toolIterations < providerOptions.maximumToolIterations else {
@@ -102,14 +100,13 @@ public struct PiAILanguageModel: LanguageModel {
           result.toolCalls,
           in: session
         )
-        transcriptEntries.append(contentsOf: try ProviderMapper.entries(from: result.content))
+        transcriptEntries.append(contentsOf: result.entries)
         if resolution.stopped {
           let empty = try emptyContent(for: type)
           return LanguageModelSession.Response(
             content: empty.content,
             rawContent: empty.raw,
-            transcriptEntries: ArraySlice(transcriptEntries),
-            reasoning: reasoning
+            transcriptEntries: ArraySlice(transcriptEntries)
           )
         }
         transcriptEntries.append(contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
@@ -124,12 +121,12 @@ public struct PiAILanguageModel: LanguageModel {
         continue
       }
 
+      transcriptEntries.append(contentsOf: result.reasoningEntries)
       let raw = try ProviderMapper.generatedContent(result.text, for: type)
       return LanguageModelSession.Response(
         content: try ProviderMapper.content(type, from: raw),
         rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries),
-        reasoning: reasoning
+        transcriptEntries: ArraySlice(transcriptEntries)
       )
     }
   }
@@ -160,7 +157,6 @@ public struct PiAILanguageModel: LanguageModel {
             for: type, options: options, custom: custom)
           var transcriptEntries: [Transcript.Entry] = []
           var toolIterations = 0
-          var reasoning: String?
           while true {
             try Task.checkCancellation()
             let request = ProviderRequest(
@@ -171,16 +167,17 @@ public struct PiAILanguageModel: LanguageModel {
               tools: tools,
               options: generationOptions
             )
-            var yieldedCurrentRound = false
-            let priorReasoning = reasoning
-            let result = try await collect(runtime.stream(request)) { text, roundReasoning in
-              reasoning = roundReasoning.map { (priorReasoning ?? "") + $0 } ?? priorReasoning
+            var lastSnapshot: LanguageModelSession.ResponseStream<Content>.Snapshot?
+            func emit(_ text: String, entries: [Transcript.Entry]) throws {
               if let snapshot = try ProviderMapper.snapshot(
-                text, for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
-              ) {
+                text, for: type, transcriptEntries: entries)
+              {
                 continuation.yield(snapshot)
-                yieldedCurrentRound = true
+                lastSnapshot = snapshot
               }
+            }
+            let result = try await collect(runtime.stream(request)) { text, reasoningEntries in
+              try emit(text, entries: transcriptEntries + reasoningEntries)
             }
             if !result.toolCalls.isEmpty {
               guard toolIterations < custom.maximumToolIterations else {
@@ -190,24 +187,14 @@ public struct PiAILanguageModel: LanguageModel {
                 )
               }
               toolIterations += 1
-              let resolution = try await resolve(result.toolCalls, in: session)
+              transcriptEntries.append(contentsOf: result.entries)
+              try emit("", entries: transcriptEntries)
+              let resolution = try await resolve(result.toolCalls, in: session) { output in
+                transcriptEntries.append(.toolOutput(output))
+                try emit("", entries: transcriptEntries)
+              }
               try Task.checkCancellation()
-              transcriptEntries.append(contentsOf: try ProviderMapper.entries(from: result.content))
-              if resolution.stopped {
-                if let snapshot = try ProviderMapper.snapshot(
-                  "", for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
-                ) {
-                  continuation.yield(snapshot)
-                }
-                break
-              }
-              transcriptEntries.append(
-                contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
-              if let snapshot = try ProviderMapper.snapshot(
-                "", for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
-              ) {
-                continuation.yield(snapshot)
-              }
+              if resolution.stopped { break }
               guard let assistantMessage = result.assistantMessage else {
                 throw AIReasoningCoreError(
                   .invalidProviderResponse,
@@ -220,12 +207,10 @@ public struct PiAILanguageModel: LanguageModel {
             }
             let raw = try ProviderMapper.generatedContent(result.text, for: type)
             _ = try ProviderMapper.content(type, from: raw)
-            if !yieldedCurrentRound {
-              if let snapshot = try ProviderMapper.snapshot(
-                result.text, for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
-              ) {
-                continuation.yield(snapshot)
-              }
+            transcriptEntries.append(contentsOf: result.reasoningEntries)
+            // Terminal signatures/metadata can complete a reasoning entry without new answer text.
+            if lastSnapshot.map({ Array($0.transcriptEntries) }) != transcriptEntries {
+              try emit(result.text, entries: transcriptEntries)
             }
             break
           }
@@ -241,10 +226,11 @@ public struct PiAILanguageModel: LanguageModel {
 
   private func collect(
     _ stream: AsyncThrowingStream<ProviderEvent, any Error>,
-    onUpdate: ((String, String?) throws -> Void)? = nil
+    onUpdate: ((String, [Transcript.Entry]) throws -> Void)? = nil
   ) async throws -> CollectedResponse {
     var text = ""
-    var reasoning: String?
+    let roundID = UUID().uuidString
+    var reasoningIndex: Int?
     var content: [ProviderAssistantContent] = []
     var callIndices: [String: Int] = [:]
     var openCalls: [String: String] = [:]
@@ -288,12 +274,13 @@ public struct PiAILanguageModel: LanguageModel {
         )
       case .textDelta(let delta):
         text += delta
-        try onUpdate?(text, reasoning)
         if case .text(let previous) = content.last {
           content[content.count - 1] = .text(previous + delta)
         } else {
           content.append(.text(delta))
         }
+        reasoningIndex = nil
+        try onUpdate?(text, ProviderMapper.reasoningEntries(from: content, roundID: roundID))
       case .toolCallStarted(let id, let name):
         guard openCalls[id] == nil, !completedCallIDs.contains(id) else {
           throw AIReasoningCoreError(
@@ -301,6 +288,7 @@ public struct PiAILanguageModel: LanguageModel {
             "provider started duplicate tool call: \(id)"
           )
         }
+        reasoningIndex = nil
         openCalls[id] = name
         callIndices[id] = content.count
         content.append(.toolCall(ProviderToolCall(id: id, name: name, arguments: .object([:]))))
@@ -339,10 +327,21 @@ public struct PiAILanguageModel: LanguageModel {
         _ = try await assets.save(asset)
       case .reasoningDelta(let delta):
         guard !delta.isEmpty else { continue }
-        reasoning = (reasoning ?? "") + delta
-        try onUpdate?(text, reasoning)
-      case .usage, .reasoningSignatureDelta:
-        // Display text is independent of accounting and opaque replay state.
+        if let index = reasoningIndex, case .reasoning(let previous) = content[index] {
+          content[index] = .reasoning(
+            .init(
+              text: previous.text + delta, signature: previous.signature,
+              isRedacted: previous.isRedacted, providerMetadata: previous.providerMetadata))
+        } else {
+          reasoningIndex = content.count
+          content.append(.reasoning(.init(text: delta, signature: nil, providerMetadata: [:])))
+        }
+        try onUpdate?(text, ProviderMapper.reasoningEntries(from: content, roundID: roundID))
+      case .reasoningSignatureDelta:
+        // Provider signatures are opaque: only the authoritative terminal content is replayable.
+        // Some protocols emit fragments, others emit a replacement token; never concatenate here.
+        break
+      case .usage:
         break
       case .responseSnapshot(let snapshot):
         try validate(snapshot)
@@ -403,11 +402,20 @@ public struct PiAILanguageModel: LanguageModel {
       toolCalls: calls
     )
     let assistantMessage = calls.isEmpty ? nil : try terminalSnapshot.replayAssistantMessage()
+    let terminalContent: [ProviderAssistantContent] = terminalSnapshot.content.compactMap {
+      switch $0 {
+      case .text(let value): return .signedText(value)
+      case .reasoning(let value): return .reasoning(value)
+      case .toolCall(let value): return .toolCall(value)
+      case .asset: return nil
+      }
+    }
     return CollectedResponse(
       text: text,
-      reasoning: reasoning,
       toolCalls: calls,
-      content: content,
+      entries: try ProviderMapper.entries(from: terminalContent, roundID: roundID),
+      reasoningEntries: try ProviderMapper.reasoningEntries(
+        from: terminalContent, roundID: roundID),
       assistantMessage: assistantMessage
     )
   }
@@ -460,7 +468,8 @@ public struct PiAILanguageModel: LanguageModel {
 
   private func resolve(
     _ calls: [ProviderToolCall],
-    in session: LanguageModelSession
+    in session: LanguageModelSession,
+    onOutput: ((Transcript.ToolOutput) throws -> Void)? = nil
   ) async throws -> ToolResolution {
     let transcriptCalls = try calls.map(ProviderMapper.transcriptToolCall)
     if let delegate = session.toolExecutionDelegate {
@@ -480,6 +489,7 @@ public struct PiAILanguageModel: LanguageModel {
 
     var outputs: [Transcript.ToolOutput] = []
     for (call, decision) in zip(transcriptCalls, decisions) {
+      try Task.checkCancellation()
       switch decision {
       case .stop:
         throw AIReasoningCoreError(
@@ -492,10 +502,11 @@ public struct PiAILanguageModel: LanguageModel {
           toolName: call.toolName,
           segments: segments
         )
+        outputs.append(output)
+        try onOutput?(output)
         if let delegate = session.toolExecutionDelegate {
           await delegate.didExecuteToolCall(call, output: output, in: session)
         }
-        outputs.append(output)
       case .execute:
         guard let tool = session.tools.first(where: { $0.name == call.toolName }) else {
           throw AIReasoningCoreError(.unknownTool, "unknown tool: \(call.toolName)")
@@ -506,10 +517,11 @@ public struct PiAILanguageModel: LanguageModel {
             toolName: call.toolName,
             segments: try await execute(tool, arguments: call.arguments)
           )
+          outputs.append(output)
+          try onOutput?(output)
           if let delegate = session.toolExecutionDelegate {
             await delegate.didExecuteToolCall(call, output: output, in: session)
           }
-          outputs.append(output)
         } catch {
           if let delegate = session.toolExecutionDelegate {
             await delegate.didFailToolCall(call, error: error, in: session)
@@ -551,9 +563,9 @@ public struct PiAILanguageModel: LanguageModel {
 
 private struct CollectedResponse: Sendable {
   let text: String
-  let reasoning: String?
   let toolCalls: [ProviderToolCall]
-  let content: [ProviderAssistantContent]
+  let entries: [Transcript.Entry]
+  let reasoningEntries: [Transcript.Entry]
   let assistantMessage: ProviderAssistantMessage?
 }
 
@@ -585,10 +597,12 @@ private enum ProviderMapper {
               )
             )
           })
+      case .reasoning(let reasoning):
+        message = .assistant([.reasoning(try providerReasoning(reasoning))])
       case .toolOutput(let output):
         message = try toolResult(output)
       }
-      // A mixed assistant turn is stored as adjacent response/toolCalls entries.
+      // A mixed assistant turn is stored as adjacent reasoning/response/toolCalls entries.
       // A tool output, prompt or instructions entry terminates that turn.
       if case .assistant(let content) = message,
         case .assistant(let previous) = messages.last
@@ -601,8 +615,11 @@ private enum ProviderMapper {
     return messages
   }
 
-  static func entries(from content: [ProviderAssistantContent]) throws -> [Transcript.Entry] {
+  static func entries(from content: [ProviderAssistantContent], roundID: String = UUID().uuidString)
+    throws -> [Transcript.Entry]
+  {
     var entries: [Transcript.Entry] = []
+    var reasoningOrdinal = 0
     for item in content {
       switch item {
       case .text(let text):
@@ -610,9 +627,10 @@ private enum ProviderMapper {
       case .signedText(let text):
         entries.append(
           .response(.init(assetIDs: [], segments: [.text(.init(content: text.text))])))
-      case .reasoning:
-        throw AIReasoningCoreError(
-          .invalidTranscript, "AnyLanguageModel cannot represent assistant reasoning content")
+      case .reasoning(let value):
+        entries.append(
+          .reasoning(try reasoningEntry(value, id: "\(roundID):reasoning:\(reasoningOrdinal)")))
+        reasoningOrdinal += 1
       case .toolCall(let call):
         let mapped = try transcriptToolCall(call)
         if case .toolCalls(let previous) = entries.last {
@@ -624,6 +642,65 @@ private enum ProviderMapper {
       }
     }
     return entries
+  }
+
+  static func reasoningEntries(from content: [ProviderAssistantContent], roundID: String) throws
+    -> [Transcript.Entry]
+  {
+    try entries(
+      from: content.filter { if case .reasoning = $0 { true } else { false } }, roundID: roundID)
+  }
+
+  private static func reasoningEntry(_ value: ProviderReasoningContent, id: String) throws
+    -> Transcript.Reasoning
+  {
+    var metadata: [String: GeneratedContent] = [
+      "pi-ai-swift.providerMetadata": try generatedContent(.object(value.providerMetadata))
+    ]
+    if let redacted = value.isRedacted {
+      metadata["pi-ai-swift.isRedacted"] = GeneratedContent(redacted)
+    }
+    if value.isRedacted == true {
+      metadata["pi-ai-swift.redactedText"] = GeneratedContent(value.text)
+    }
+    return .init(
+      id: id, metadata: metadata,
+      segments: value.isRedacted == true || value.text.isEmpty
+        ? [] : [.text(.init(id: "\(id):text", content: value.text))],
+      signature: value.signature.map { Data($0.utf8) })
+  }
+
+  private static func providerReasoning(_ value: Transcript.Reasoning) throws
+    -> ProviderReasoningContent
+  {
+    let redacted: Bool?
+    if let flag = value.metadata["pi-ai-swift.isRedacted"] {
+      redacted = try Bool(flag)
+    } else {
+      redacted = nil
+    }
+    let display = try text(from: value.segments)
+    let originalText =
+      redacted == true
+      ? try value.metadata["pi-ai-swift.redactedText"].map(String.init) ?? "" : display
+    let signature: String?
+    if let bytes = value.signature {
+      guard let decoded = String(data: bytes, encoding: .utf8) else {
+        throw AIReasoningCoreError(.invalidTranscript, "pi-ai reasoning signature is not UTF-8")
+      }
+      signature = decoded
+    } else {
+      signature = nil
+    }
+    var metadata: [String: PiAIProviderRuntime.JSONValue] = [:]
+    if let raw = value.metadata["pi-ai-swift.providerMetadata"] {
+      guard case .object(let object) = try jsonValue(raw) else {
+        throw AIReasoningCoreError(.invalidTranscript, "pi-ai reasoning metadata must be an object")
+      }
+      metadata = object
+    }
+    return .init(
+      text: originalText, signature: signature, isRedacted: redacted, providerMetadata: metadata)
   }
 
   static func tools(from tools: [any Tool]) throws -> [ProviderToolDefinition] {
@@ -734,21 +811,21 @@ private enum ProviderMapper {
   static func snapshot<Content: Generable>(
     _ text: String,
     for type: Content.Type,
-    transcriptEntries: [Transcript.Entry] = [],
-    reasoning: String? = nil
+    transcriptEntries: [Transcript.Entry] = []
   ) throws -> LanguageModelSession.ResponseStream<Content>.Snapshot? {
     if type == String.self {
       let raw = GeneratedContent(text)
       return .init(
         content: (text as! Content).asPartiallyGenerated(), rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries), reasoning: reasoning
+        transcriptEntries: ArraySlice(transcriptEntries)
       )
     }
     let raw: GeneratedContent
     do {
       // An empty object represents not-yet-generated fields, not reasoning JSON.
       raw =
-        text.isEmpty && reasoning != nil
+        text.isEmpty
+          && transcriptEntries.contains { if case .reasoning = $0 { true } else { false } }
         ? GeneratedContent(properties: [:]) : try GeneratedContent(json: text)
     } catch {
       throw AIReasoningCoreError(
@@ -758,8 +835,7 @@ private enum ProviderMapper {
     }
     guard let partial = try? partiallyGenerated(type, from: raw) else { return nil }
     return .init(
-      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries),
-      reasoning: reasoning
+      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries)
     )
   }
 

@@ -3,61 +3,62 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
-## Display reasoning (published through the maintained fork)
+## Transcript reasoning (maintained fork)
 
-The maintained dependency is `qoli/AnyLanguageModel/main`. The display-reasoning
-contract is published there at `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`, based on
-huggingface main `6136ad3a3c9bc418ded7d29ac37ec4862671f68a`:
+The working implementation replaces the prototype `Response.reasoning` and
+`Snapshot.reasoning` properties with Apple Foundation Models 27-shaped
+`Transcript.Entry.reasoning` / `Transcript.Reasoning`. Snapshots and responses
+carry reasoning via `transcriptEntries`; existing initializer selectors are
+restored. This follows the direction requested in
+[upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264#issuecomment-5819322352).
 
-- `LanguageModelSession.Response.reasoning: String?`;
-- `LanguageModelSession.ResponseStream.Snapshot.reasoning: String?`;
-- trailing `reasoning: String? = nil` initializer arguments, including the
-  single-value response stream, preserving existing source calls;
-- forwarding through stream collection and schema conversion without changing
-  tool execution or Transcript types;
-- a demonstrated cancellation repair: `wrapStream` checks cancellation after
-  the upstream loop before committing the final response. A cancelled
-  `AsyncThrowingStream` can otherwise appear to end normally and commit its
-  last partial snapshot (including a reasoning-only empty answer).
+The maintained `qoli/AnyLanguageModel/main` now publishes this contract at
+`78498ee06dc07f24d57cd660987edb354c35f33c`, replacing the prototype
+`9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`. Core and Smoke resolution snapshots
+adopt the published commit without local package overrides. pi-ai-swift remains
+remote `main` revision `44c079d92d6ffbcdfbef73019664d04f1ce93269`.
 
-The value is cumulative provider-public display text for one generation,
-including its tool rounds. `nil` means no display text was supplied. It is not
-opaque replay data, a token count, or model-facing conversation context.
+Core creates stable reasoning entry IDs, preserves opaque signatures and provider
+metadata through Codable transcript replay, and keeps redacted data out of display
+segments. SwiftChat renders reasoning entries independently from answer deltas;
+legacy presentation sidecars remain readable but new reasoning is persisted in
+the transcript. The optional session error policy supports explicit preserve and
+revert behavior. Its nil setting preserves the fork's legacy behavior; it is not
+a claim of Apple's default error-policy behavior. The fork-specific
+`waitForResponseCompletion()` lets callers await cancellation cleanup before save.
 
-The user authorized adopting and publishing through the fork on 2026-09-25.
-[Upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264)
-remains available for contribution upstream; its merge is not a distribution
-gate for Core or SwiftChat. Package manifests and lockfiles use the published
-fork, never a sibling path override. Optional future candidate verification can
-still use the disposable `Scripts/check-display-reasoning.py` harness.
+The provider event seam has unindexed reasoning text/signature deltas. Terminal
+blocks are authoritative for signature and metadata replay. Core does not infer
+provider-specific signature-fragment concatenation rules. Reasoning blocks are
+identified in streaming order, with text/tool boundaries separating blocks;
+terminal provider content supplies the completed representation.
 
-Local verification on 2026-09-25:
+Candidate verification on 2026-09-25:
 
-- AnyLanguageModel: 562 deterministic tests passed, including six reasoning
-  tests. Live provider tests were skipped and Ollama integration tests excluded.
-  An initial unfiltered run attempted localhost Ollama and failed with connection
-  refused; it supplied no model response and is not acceptance evidence.
-- Core: 45 tests passed; formatting, generic iOS Simulator build and whitespace
-  checks passed. This includes cumulative reasoning, unchanged-answer updates,
-  final collection, tool rounds/replay/execution count, stopped tools, structured
-  object and scalar output, cancellation, terminal mismatch, and usage-only input.
-- SwiftChat: 24 coordinator tests, macOS build, iOS Simulator build, and both
-  renderer fixtures passed. Tests cover separate bridge deltas, presentation
-  persistence/reopening, exclusion from follow-up model requests, and completion.
-- Both integration harnesses resolved published pi-ai-swift/main
-  `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`; pi-ai-swift was not modified.
+- AnyLanguageModel: 587 offline tests in 59 suites passed, including built-in
+  Anthropic reasoning/replay, opaque Codable data and cancellation policies.
+- Core: 47 deterministic tests passed, recursive Swift format lint and whitespace
+  checks passed, and the generic iOS Simulator build passed.
+- SwiftChat: 29 coordinator tests, macOS build, generic iOS Simulator
+  build, and both Arc CDP renderer fixtures passed.
+- Core and app candidate harnesses consume the modified AnyLanguageModel source;
+  Core resolves pi-ai-swift from the current published remote revision above.
+  No live model calls, commits, pushes, or release publication were performed.
 
-Core evidence is in `/tmp/AIReasoningCore-reasoning-{test,ios,format}.log`.
-App evidence is in `/tmp/SwiftChat-reasoning-{macOS-test,iOS}-final.log`.
-These are local build/test results, not live provider or native-window acceptance.
+Evidence: `/tmp/aml-transcript-full-tests.log`, `/tmp/core-transcript-full-tests.log`,
+`/tmp/core-transcript-candidate-ios.log`, `/tmp/core-transcript-format.log`,
+`/tmp/swiftchat-transcript-native-test.log`, `/tmp/swiftchat-transcript-macos.log`,
+`/tmp/swiftchat-transcript-ios.log`,
+`/tmp/swiftchat-transcript-renderer.log`, and
+`/tmp/swiftchat-transcript-generation-start.log`.
 
-Published-fork acceptance on 2026-09-25: ordinary `swift test` passed all
-45 tests; recursive Swift format lint, Core iOS Simulator build, Smoke iOS
-Simulator build, and whitespace checks passed. Both resolution snapshots bind
-`qoli/AnyLanguageModel` to `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11` and
-pi-ai-swift to `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. Xcode builds used
-`-skipMacroValidation` after verifying the fork did not alter macro sources;
-no local dependency override was used.
+Published dependency acceptance on 2026-09-25: the ordinary checkout resolves
+AnyLanguageModel `78498ee06dc07f24d57cd660987edb354c35f33c` and pi-ai-swift
+`44c079d92d6ffbcdfbef73019664d04f1ce93269`. All 47 Core tests, recursive format
+lint, whitespace checks, and the Core generic iOS Simulator build passed against
+that remote graph. Smoke consumes the same two revisions. Logs are
+`/tmp/core-transcript-publish-tests.log`, `/tmp/core-transcript-publish-ios.log`
+and `/tmp/core-transcript-publish-smoke.log`. No live provider call was made.
 
 ## AnyLanguageModel contract-only product
 
@@ -86,21 +87,24 @@ The session commits them before stream completion and forwards consumer stream
 cancellation to the model stream. AIReasoningCore now uses these entries for tool
 rounds and continues through its normal `Tool.call` path.
 
-The wrapper commits entries only after successful stream completion. If a tool
-already ran and a later provider turn is cancelled or fails, its call/result
-entries are absent from the session transcript. Neither Core nor the session
-automatically retries that call. Apps must treat this as an interrupted operation
-whose side effects may already have happened; a durable partial transcript would
-require a further upstream session contract.
+The maintained fork supports explicit `.preserveTranscript` on errors/cancellation,
+retaining cumulative reasoning and completed tool checkpoints without treating a
+partial answer as a successful final response. Checkpoints require a representable
+partial output type; scalar structured generation may defer reasoning and tool
+checkpoints until answer content is representable. `.revertTranscript` removes the
+request's entries. The default nil policy keeps legacy behavior. Apps must await
+session response cleanup before persistence. These policies do not reverse tool
+side effects or retry tools automatically. Non-streaming calls have no partial
+checkpoint channel: preserve retains the prompt on failure, while revert restores
+the pre-request transcript. Completed non-streaming tool effects cannot be
+reconstructed from a thrown response.
 
-Non-streaming tool continuation within one `respond` call now uses
-pi-ai-swift's terminal `ProviderResponseSnapshot` and preserves its opaque replay
-metadata in a `ProviderAssistantMessage`. AnyLanguageModel's persisted
-`Transcript`, however, can represent only visible assistant text and tool calls;
-it cannot retain signed text, reasoning blocks, thought signatures, source
-identity or response metadata when a transcript is encoded and later restored.
-Core records that loss explicitly and does not claim opaque provider-state replay
-across a reconstructed `LanguageModelSession`.
+Immediate tool continuation uses pi-ai-swift's terminal
+`ProviderResponseSnapshot` and its opaque `ProviderAssistantMessage`. Persisted
+reasoning now retains text, signature, redaction, and provider metadata. Signed
+answer text, tool thought signatures, source identity, and response-level metadata
+still lack complete transcript representation; full opaque assistant-state replay
+across a reconstructed session is therefore not claimed.
 
 ## AnyLanguageModel response assets
 
