@@ -109,6 +109,25 @@ sets `assetIDs` to an empty array. Provider assets are safely written to
 `AssetStore`, but they cannot be linked into that transcript entry without an
 upstream contract change.
 
+## pi-ai-swift pin update (2026-09-25)
+
+Core and Smoke now resolve published pi-ai-swift/main
+`44c079d92d6ffbcdfbef73019664d04f1ce93269`, replacing `93fcae3`.
+The branch dependency remains `main`; AnyLanguageModel remains the maintained
+fork at `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`.
+
+Pre-adoption verification passed: exact accepted upstream signals, 171 provider
+runtime tests, 15 maintenance/catalog tests, 18 iOS Simulator runtime tests,
+47 isolated Core consumer tests (including real-adapter response identity), and
+both provider/Core Simulator builds. Only the pi-ai-swift pin changed in the
+isolated consumer graph. No live provider calls were made. Completion models
+without `supportsStrictMode` now omit strict projection, matching upstream.
+SwiftChat has its own resolution snapshot and requires a separate update.
+
+After adopting the pin in the real checkout, all 45 Core tests passed; Core
+and Smoke generic iOS Simulator builds, recursive Swift formatting, and
+whitespace checks passed. Both lockfiles changed only the pi-ai-swift revision.
+
 ## pi-ai-swift branch distribution
 
 The concrete built-in provider runtime now supplies catalog, authorization, wire
@@ -149,8 +168,8 @@ edited. Consumer assertions live in
 
 This is local integration evidence. The repair was pushed to pi-ai-swift `main`
 as `60d47d489435fca8f2737d1ebc7d6d78505a881d`. Both Core resolution
-snapshots contained that commit at acceptance; the fork integration now resolves
-pi-ai-swift `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. SwiftChat's own resolution and product
+snapshots contained that commit at acceptance; the current integration resolves
+pi-ai-swift `44c079d92d6ffbcdfbef73019664d04f1ce93269`. SwiftChat's own resolution and product
 acceptance remain separate evidence.
 
 ## Typed reasoning effort integration (resolved)
@@ -162,8 +181,8 @@ It does not hard-code the selectable effort levels.
 
 The 2026-09-20 remote-main integration was verified against published
 pi-ai-swift commit `d0fb08df6cad382c336b229fe4ebb56956537664`. Both
-`Package.resolved` snapshots resolved that exact revision at the time. The current fork integration
-resolves `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. The package
+`Package.resolved` snapshots resolved that exact revision at the time. The current integration
+resolves `44c079d92d6ffbcdfbef73019664d04f1ce93269`. The package
 declarations continue to track `main`, with no sibling package override.
 
 Verification on the published revision:
