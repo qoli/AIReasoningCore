@@ -1,13 +1,14 @@
 # Upstream Gates
 
-These gates distinguish the completed AIReasoningCore rewrite from capabilities
-that its current dependencies cannot yet supply.
+These gates distinguish capabilities supplied by the current dependencies from
+remaining contract limitations.
 
 ## AnyLanguageModel contract-only product
 
-AnyLanguageModel 0.9.0 exposes one library product. Its contract types and its
+AnyLanguageModel `main` at `1f6641a2ffa1f54923b0812fbbffe84fd9fdfbc8`
+exposes one library product. Its contract types and its
 provider implementations share the same target, so importing the protocol family
-also compiles EventSource, SwiftNIO, JSONSchema and PartialJSONDecoder.
+also compiles EventSource, SwiftNIO and JSONSchema.
 
 AIReasoningCore source code uses the contract family but the dependency graph is
 not yet contract-only. A publishable minimal runtime requires AnyLanguageModel to
@@ -24,19 +25,17 @@ create a second protocol family with different Swift type identity.
 
 ## AnyLanguageModel streaming transcript
 
-`LanguageModelSession.ResponseStream.Snapshot` cannot return transcript entries.
-A conforming external model therefore cannot persist streamed tool calls and tool
-outputs in the session transcript. AIReasoningCore reports
-`unsupportedStreamingToolCalls`; it does not switch to `respond`.
+The adopted `main` revision adds cumulative `transcriptEntries` to stream snapshots.
+The session commits them before stream completion and forwards consumer stream
+cancellation to the model stream. AIReasoningCore now uses these entries for tool
+rounds and continues through its normal `Tool.call` path.
 
-The upstream contract needs stream snapshots or a completion value that can carry
-ordered transcript entries.
-
-The current session wrapper also drains the model stream in its own task without
-propagating downstream iterator termination. Cancelling or abandoning a caller's
-session stream therefore cannot reliably cancel the underlying provider request.
-AIReasoningCore does not claim session-level provider cancellation until that
-wrapper forwards termination.
+The wrapper commits entries only after successful stream completion. If a tool
+already ran and a later provider turn is cancelled or fails, its call/result
+entries are absent from the session transcript. Neither Core nor the session
+automatically retries that call. Apps must treat this as an interrupted operation
+whose side effects may already have happened; a durable partial transcript would
+require a further upstream session contract.
 
 Non-streaming tool continuation within one `respond` call now uses
 pi-ai-swift's terminal `ProviderResponseSnapshot` and preserves its opaque replay
@@ -93,10 +92,9 @@ edited. Consumer assertions live in
 `IntegrationTests/ProviderIdentity/ConsumerResponseIdentityTests.swift`.
 
 This is local integration evidence. The repair was pushed to pi-ai-swift `main`
-as `60d47d489435fca8f2737d1ebc7d6d78505a881d`; the existing package resolution
-snapshots do not contain that commit. Remote-main refresh and product acceptance
-remain separate follow-up work; this probe does not establish that SwiftChat has
-received it.
+as `60d47d489435fca8f2737d1ebc7d6d78505a881d`. Both Core resolution
+snapshots now contain that commit. SwiftChat's own resolution and product
+acceptance remain separate evidence.
 
 ## Typed reasoning effort integration (resolved)
 
@@ -105,11 +103,11 @@ Core adopts `ProviderReasoningEffort` and model-specific
 choices and resets to provider default when the user changes provider or model.
 It does not hard-code the selectable effort levels.
 
-Remote-main integration was refreshed on 2026-09-20 against published
+The 2026-09-20 remote-main integration was verified against published
 pi-ai-swift commit `d0fb08df6cad382c336b229fe4ebb56956537664`. Both
-`Package.resolved` snapshots and the SwiftPM/Xcode source-control checkouts
-resolve that exact revision. The package declarations continue to track `main`,
-with no sibling package override.
+`Package.resolved` snapshots resolved that exact revision at the time. They now
+resolve `60d47d489435fca8f2737d1ebc7d6d78505a881d`. The package
+declarations continue to track `main`, with no sibling package override.
 
 Verification on the published revision:
 

@@ -48,6 +48,11 @@ interface around it.
   identity and finish reason, then uses its `ProviderAssistantMessage` for the
   immediate tool continuation so signed text, reasoning signatures, tool thought
   signatures, namespaces and provider replay metadata remain intact.
+- Streaming tool calls use the same validated terminal response and tool resolver.
+  Snapshots carry completed tool-round transcript entries cumulatively; their
+  content represents only the current provider round. The session appends those
+  entries before the final response when the stream completes. The immediate
+  continuation retains the provider's opaque assistant message.
 - Structured streaming snapshots may contain partial JSON. Final structured
   responses must pass complete JSON validation before conversion to the requested
   type; truncated JSON is rejected even if the partial parser could repair it.
@@ -84,7 +89,6 @@ The runtime fails instead of substituting another behavior when:
 - a provider omits, duplicates, reorders or contradicts its terminal response snapshot;
 - a tool name is unknown;
 - a provider emits an asset without an `AssetStore`;
-- streamed tool calls cannot be represented by AnyLanguageModel 0.9.0;
 - a URL uses a scheme outside the configured allowed schemes;
 - a document path escapes its configured root;
 - a persisted schema version is unsupported.

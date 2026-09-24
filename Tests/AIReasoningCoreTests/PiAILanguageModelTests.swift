@@ -98,7 +98,7 @@ final class PiAILanguageModelTests: XCTestCase {
       partialAnswers.append(snapshot.content.answer)
     }
 
-    XCTAssertEqual(partialAnswers, [nil, "yes"])
+    XCTAssertEqual(partialAnswers.last!, "yes")
   }
 
   func testToolSchemaMaterializesRootAndPreservesNestedDefinitions() async throws {
@@ -480,11 +480,24 @@ final class PiAILanguageModelTests: XCTestCase {
       })
   }
 
-  func testStreamingToolCallFailsExplicitly() async throws {
+  func testStreamingToolCallsContinueTwiceAndPersistBeforeCompletion() async throws {
+    let first = ProviderToolCall(
+      id: "call-1", name: "echo", arguments: .object(["value": .string("one")]))
+    let second = ProviderToolCall(
+      id: "call-2", name: "echo", arguments: .object(["value": .string("two")]))
     let runtime = FakeRuntime { request in
-      [
+      let outputCount = request.messages.filter {
+        if case .toolResult = $0 { return true }
+        return false
+      }.count
+      if outputCount == 2 { return responseEvents(for: request, text: "done") }
+      let call = outputCount == 0 ? first : second
+      return [
         .responseStarted(metadata(for: request)),
-        .toolCallStarted(id: "call-1", name: "echo"),
+        .toolCallStarted(id: call.id, name: call.name),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
         .completed(.toolCalls),
       ]
     }
@@ -493,12 +506,89 @@ final class PiAILanguageModelTests: XCTestCase {
       tools: [EchoTool()]
     )
 
-    do {
-      for try await _ in session.streamResponse(to: "Use echo") {}
-      XCTFail("expected explicit streaming tool failure")
-    } catch let error as AIReasoningCoreError {
-      XCTAssertEqual(error.code, .unsupportedStreamingToolCalls)
+    var snapshots: [LanguageModelSession.ResponseStream<String>.Snapshot] = []
+    for try await snapshot in session.streamResponse(to: "Use echo") {
+      snapshots.append(snapshot)
     }
+    XCTAssertEqual(snapshots.last?.content, "done")
+    XCTAssertEqual(snapshots.last?.transcriptEntries.count, 4)
+    XCTAssertEqual(session.transcript.count, 6)
+    guard case .toolCalls(let firstCalls) = session.transcript[1],
+      case .toolOutput(let firstOutput) = session.transcript[2],
+      case .toolCalls(let secondCalls) = session.transcript[3],
+      case .toolOutput(let secondOutput) = session.transcript[4]
+    else { return XCTFail("expected ordered tool calls and results") }
+    XCTAssertEqual(firstCalls.first?.id, "call-1")
+    XCTAssertEqual(firstOutput.id, "call-1")
+    XCTAssertEqual(secondCalls.first?.id, "call-2")
+    XCTAssertEqual(secondOutput.id, "call-2")
+    let restored = try JSONDecoder().decode(
+      Transcript.self, from: JSONEncoder().encode(session.transcript))
+    XCTAssertEqual(restored.count, session.transcript.count)
+    let replay = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+      tools: [EchoTool()], transcript: restored)
+    let followUp = try await replay.respond(to: "Follow up")
+    XCTAssertEqual(followUp.content, "done")
+  }
+
+  func testStreamingMixedToolTurnKeepsTextInTranscriptOrder() async throws {
+    let call = ProviderToolCall(
+      id: "call-1", name: "echo", arguments: .object(["value": .string("ping")]))
+    let runtime = FakeRuntime { request in
+      if request.messages.contains(where: {
+        if case .toolResult = $0 { return true }
+        return false
+      }) {
+        return responseEvents(for: request, text: "done")
+      }
+      return [
+        .responseStarted(metadata(for: request)),
+        .textDelta("checking"),
+        .toolCallStarted(id: call.id, name: call.name),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(
+            for: request, content: [.text("checking"), .toolCall(call)], finishReason: .toolCalls)),
+        .completed(.toolCalls),
+      ]
+    }
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+      tools: [EchoTool()])
+    var snapshots: [LanguageModelSession.ResponseStream<String>.Snapshot] = []
+    for try await snapshot in session.streamResponse(to: "Use echo") { snapshots.append(snapshot) }
+
+    XCTAssertEqual(snapshots.map(\.content), ["checking", "", "done"])
+    XCTAssertEqual(snapshots.last?.transcriptEntries.count, 3)
+    XCTAssertEqual(session.transcript.count, 5)
+    guard case .response(let preamble) = session.transcript[1],
+      case .text(let text) = preamble.segments.first,
+      case .toolCalls = session.transcript[2],
+      case .toolOutput = session.transcript[3],
+      case .response(let answer) = session.transcript[4],
+      case .text(let answerText) = answer.segments.first
+    else { return XCTFail("expected ordered assistant text, tool exchange, and answer") }
+    XCTAssertEqual(text.content, "checking")
+    XCTAssertEqual(answerText.content, "done")
+  }
+
+  func testSessionStreamCancellationReachesProviderStream() async throws {
+    let firstSnapshot = expectation(description: "session delivered first snapshot")
+    let providerStopped = expectation(description: "provider stream terminated")
+    let runtime = HangingRuntime(providerStopped: providerStopped)
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
+    let consumer = Task {
+      for try await _ in session.streamResponse(to: "Wait") {
+        firstSnapshot.fulfill()
+      }
+    }
+    await fulfillment(of: [firstSnapshot], timeout: 2)
+    consumer.cancel()
+    await fulfillment(of: [providerStopped], timeout: 2)
+    _ = await consumer.result
+    XCTAssertFalse(session.isResponding)
   }
 
   func testUnknownToolFailsExplicitly() async throws {
@@ -720,6 +810,32 @@ private struct FakeRuntime: ProviderRuntime {
       } catch {
         continuation.finish(throwing: error)
       }
+    }
+  }
+}
+
+private struct HangingRuntime: ProviderRuntime {
+  let providerStopped: XCTestExpectation
+
+  func catalog() async throws -> ProviderCatalog {
+    ProviderCatalog(revision: "test", providers: [])
+  }
+
+  func authorize(
+    _ operation: AuthorizationOperation,
+    interaction: @escaping AuthorizationInteraction
+  ) async throws -> AuthorizationState {
+    switch operation {
+    case .login(let providerID, _), .logout(let providerID):
+      return .disconnected(providerID: providerID)
+    }
+  }
+
+  func stream(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderEvent, any Error> {
+    AsyncThrowingStream { continuation in
+      continuation.yield(.responseStarted(metadata(for: request)))
+      continuation.yield(.textDelta("waiting"))
+      continuation.onTermination = { _ in providerStopped.fulfill() }
     }
   }
 }

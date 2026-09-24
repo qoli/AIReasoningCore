@@ -144,103 +144,84 @@ public struct PiAILanguageModel: LanguageModel {
       let task = Task { @Sendable in
         do {
           let custom = options[custom: Self.self] ?? CustomGenerationOptions()
-          let request = ProviderRequest(
-            id: UUID().uuidString,
-            providerID: providerID,
-            modelID: modelID,
-            messages: try ProviderMapper.messages(from: session.transcript),
-            tools: try ProviderMapper.tools(from: session.tools),
-            options: try ProviderMapper.options(for: type, options: options, custom: custom)
-          )
-          var accumulated = ""
-          var completed = false
-          var started = false
-          var terminalSnapshot: ProviderResponseSnapshot?
-          for try await event in runtime.stream(request) {
+          guard custom.maximumToolIterations > 0 else {
+            throw AIReasoningCoreError(
+              .toolIterationLimitExceeded,
+              "maximumToolIterations must be greater than zero"
+            )
+          }
+          var messages = try ProviderMapper.messages(from: session.transcript)
+          let tools = try ProviderMapper.tools(from: session.tools)
+          let generationOptions = try ProviderMapper.options(
+            for: type, options: options, custom: custom)
+          var transcriptEntries: [Transcript.Entry] = []
+          var toolIterations = 0
+          while true {
             try Task.checkCancellation()
-            guard !completed else {
-              throw AIReasoningCoreError(
-                .invalidProviderResponse,
-                "provider emitted an event after completion"
-              )
-            }
-            if !started {
-              guard case .responseStarted(let metadata) = event else {
-                throw AIReasoningCoreError(
-                  .invalidProviderResponse,
-                  "the first provider event must be responseStarted"
-                )
-              }
-              try validate(metadata)
-              started = true
-              continue
-            }
-            if terminalSnapshot != nil {
-              guard case .completed = event else {
-                throw AIReasoningCoreError(
-                  .invalidProviderResponse,
-                  "provider emitted an event after the terminal response snapshot"
-                )
-              }
-            }
-            switch event {
-            case .textDelta(let delta):
-              accumulated += delta
+            let request = ProviderRequest(
+              id: UUID().uuidString,
+              providerID: providerID,
+              modelID: modelID,
+              messages: messages,
+              tools: tools,
+              options: generationOptions
+            )
+            var yieldedCurrentRound = false
+            let result = try await collect(runtime.stream(request)) { text in
               if let snapshot = try ProviderMapper.snapshot(
-                accumulated,
-                for: type
+                text, for: type, transcriptEntries: transcriptEntries
+              ) {
+                continuation.yield(snapshot)
+                yieldedCurrentRound = true
+              }
+            }
+            if !result.toolCalls.isEmpty {
+              guard toolIterations < custom.maximumToolIterations else {
+                throw AIReasoningCoreError(
+                  .toolIterationLimitExceeded,
+                  "provider exceeded the configured tool iteration limit"
+                )
+              }
+              toolIterations += 1
+              let resolution = try await resolve(result.toolCalls, in: session)
+              try Task.checkCancellation()
+              transcriptEntries.append(contentsOf: try ProviderMapper.entries(from: result.content))
+              if resolution.stopped {
+                if let snapshot = try ProviderMapper.snapshot(
+                  "", for: type, transcriptEntries: transcriptEntries
+                ) {
+                  continuation.yield(snapshot)
+                }
+                break
+              }
+              transcriptEntries.append(
+                contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
+              if let snapshot = try ProviderMapper.snapshot(
+                "", for: type, transcriptEntries: transcriptEntries
               ) {
                 continuation.yield(snapshot)
               }
-            case .toolCallStarted, .toolInputDelta, .toolCallCompleted:
-              throw AIReasoningCoreError(
-                .unsupportedStreamingToolCalls,
-                "AnyLanguageModel 0.9.0 cannot persist streaming tool calls"
-              )
-            case .asset(let asset):
-              guard let assets else {
-                throw AIReasoningCoreError(
-                  .missingAssetStore,
-                  "provider emitted an asset without an AssetStore"
-                )
-              }
-              _ = try await assets.save(asset)
-            case .responseSnapshot(let snapshot):
-              try validate(snapshot)
-              terminalSnapshot = snapshot
-            case .completed(let reason):
-              try ProviderMapper.validateFinish(reason)
-              guard let terminalSnapshot else {
+              guard let assistantMessage = result.assistantMessage else {
                 throw AIReasoningCoreError(
                   .invalidProviderResponse,
-                  "provider completed without a terminal response snapshot"
+                  "provider tool response is missing replayable terminal state"
                 )
               }
-              try validate(
-                terminalSnapshot,
-                finishReason: reason,
-                text: accumulated,
-                toolCalls: [],
-                streaming: true
-              )
-              completed = true
-            case .responseStarted:
-              throw AIReasoningCoreError(
-                .invalidProviderResponse,
-                "provider emitted responseStarted more than once"
-              )
-            case .reasoningDelta, .reasoningSignatureDelta, .usage:
-              break
+              messages.append(.assistantMessage(assistantMessage))
+              messages.append(contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
+              continue
             }
+            let raw = try ProviderMapper.generatedContent(result.text, for: type)
+            _ = try ProviderMapper.content(type, from: raw)
+            if !yieldedCurrentRound {
+              if let snapshot = try ProviderMapper.snapshot(
+                result.text, for: type, transcriptEntries: transcriptEntries
+              ) {
+                continuation.yield(snapshot)
+              }
+            }
+            break
           }
-          guard completed else {
-            throw AIReasoningCoreError(
-              .invalidProviderResponse,
-              "provider stream ended without a completed event"
-            )
-          }
-          let raw = try ProviderMapper.generatedContent(accumulated, for: type)
-          _ = try ProviderMapper.content(type, from: raw)
           continuation.finish()
         } catch {
           continuation.finish(throwing: error)
@@ -252,7 +233,8 @@ public struct PiAILanguageModel: LanguageModel {
   }
 
   private func collect(
-    _ stream: AsyncThrowingStream<ProviderEvent, any Error>
+    _ stream: AsyncThrowingStream<ProviderEvent, any Error>,
+    onText: ((String) throws -> Void)? = nil
   ) async throws -> CollectedResponse {
     var text = ""
     var content: [ProviderAssistantContent] = []
@@ -298,6 +280,7 @@ public struct PiAILanguageModel: LanguageModel {
         )
       case .textDelta(let delta):
         text += delta
+        try onText?(text)
         if case .text(let previous) = content.last {
           content[content.count - 1] = .text(previous + delta)
         } else {
@@ -404,8 +387,7 @@ public struct PiAILanguageModel: LanguageModel {
       terminalSnapshot,
       finishReason: finishReason,
       text: text,
-      toolCalls: calls,
-      streaming: false
+      toolCalls: calls
     )
     let assistantMessage = calls.isEmpty ? nil : try terminalSnapshot.replayAssistantMessage()
     return CollectedResponse(
@@ -438,8 +420,7 @@ public struct PiAILanguageModel: LanguageModel {
     _ snapshot: ProviderResponseSnapshot,
     finishReason: ProviderFinishReason,
     text: String,
-    toolCalls: [ProviderToolCall],
-    streaming: Bool
+    toolCalls: [ProviderToolCall]
   ) throws {
     guard snapshot.finishReason == finishReason else {
       throw AIReasoningCoreError(
@@ -459,12 +440,6 @@ public struct PiAILanguageModel: LanguageModel {
       throw AIReasoningCoreError(
         .invalidProviderResponse,
         "provider response snapshot does not match streamed content"
-      )
-    }
-    if streaming, !snapshotToolCalls.isEmpty {
-      throw AIReasoningCoreError(
-        .unsupportedStreamingToolCalls,
-        "AnyLanguageModel 0.9.0 cannot persist streaming tool calls"
       )
     }
   }
@@ -743,11 +718,15 @@ private enum ProviderMapper {
 
   static func snapshot<Content: Generable>(
     _ text: String,
-    for type: Content.Type
+    for type: Content.Type,
+    transcriptEntries: [Transcript.Entry] = []
   ) throws -> LanguageModelSession.ResponseStream<Content>.Snapshot? {
     if type == String.self {
       let raw = GeneratedContent(text)
-      return .init(content: (text as! Content).asPartiallyGenerated(), rawContent: raw)
+      return .init(
+        content: (text as! Content).asPartiallyGenerated(), rawContent: raw,
+        transcriptEntries: ArraySlice(transcriptEntries)
+      )
     }
     let raw: GeneratedContent
     do {
@@ -759,7 +738,9 @@ private enum ProviderMapper {
       )
     }
     guard let partial = try? partiallyGenerated(type, from: raw) else { return nil }
-    return .init(content: partial, rawContent: raw)
+    return .init(
+      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries)
+    )
   }
 
   private static func partiallyGenerated<Content: Generable>(

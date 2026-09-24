@@ -15,7 +15,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/huggingface/AnyLanguageModel.git",
-      exact: "0.9.0"
+      branch: "main"
     ),
     .package(
       url: "https://github.com/qoli/pi-ai-swift.git",

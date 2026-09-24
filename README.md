@@ -84,13 +84,12 @@ manual Live Provider Console for pi-ai-swift catalog, authorization, streaming,
 function-call, image-input, and image-output acceptance. Live results remain
 environmental evidence and do not replace deterministic fixtures.
 
-## Known AnyLanguageModel 0.9.0 limits
+## AnyLanguageModel integration limits
 
-- Streaming snapshots cannot carry tool-call or tool-output transcript entries.
-  AIReasoningCore therefore fails explicitly when a provider emits tool calls
-  during `streamResponse`; it does not switch silently to non-streaming.
-- The session stream wrapper does not propagate caller termination to the model
-  stream, so provider-request cancellation is not claimed.
+- The adopted AnyLanguageModel `main` revision carries streaming tool entries
+  into the session transcript and forwards consumer cancellation. A cancelled
+  or failed stream does not commit partial tool history even if a tool already
+  ran; callers must treat its side effects as uncertain and avoid automatic retry.
 - Session-generated response transcript entries always use empty asset IDs.
   Provider assets are persisted to `AssetStore`, outside `Transcript`.
 - Provider response IDs, reasoning signatures, usage and opaque provider state
