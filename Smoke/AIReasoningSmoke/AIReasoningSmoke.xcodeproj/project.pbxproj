@@ -290,7 +290,7 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/huggingface/AnyLanguageModel.git";
+			repositoryURL = "https://github.com/qoli/AnyLanguageModel.git";
 			requirement = {
 				branch = main;
 				kind = branch;

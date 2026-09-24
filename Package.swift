@@ -14,7 +14,7 @@ let package = Package(
   ],
   dependencies: [
     .package(
-      url: "https://github.com/huggingface/AnyLanguageModel.git",
+      url: "https://github.com/qoli/AnyLanguageModel.git",
       branch: "main"
     ),
     .package(

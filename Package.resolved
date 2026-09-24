@@ -1,13 +1,13 @@
 {
-  "originHash" : "260058cef59a2e705b4784a89d5f503c8590df15bdc4bb1353745d5d961b944f",
+  "originHash" : "ae69cdaff21cca0fd1b1805c3ee104ff0b26c5248ddecb617f7b8e76c735a625",
   "pins" : [
     {
       "identity" : "anylanguagemodel",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/huggingface/AnyLanguageModel.git",
+      "location" : "https://github.com/qoli/AnyLanguageModel.git",
       "state" : {
         "branch" : "main",
-        "revision" : "1f6641a2ffa1f54923b0812fbbffe84fd9fdfbc8"
+        "revision" : "9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11"
       }
     },
     {
@@ -34,7 +34,7 @@
       "location" : "https://github.com/qoli/pi-ai-swift.git",
       "state" : {
         "branch" : "main",
-        "revision" : "60d47d489435fca8f2737d1ebc7d6d78505a881d"
+        "revision" : "93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1"
       }
     },
     {

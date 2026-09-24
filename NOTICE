@@ -7,10 +7,11 @@ or (at your option) any later version. See LICENSE.
 Third-party components
 ======================
 
-AnyLanguageModel main (resolved at 1f6641a2ffa1f54923b0812fbbffe84fd9fdfbc8)
-  Source: https://github.com/huggingface/AnyLanguageModel
+AnyLanguageModel main (resolved at 9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11)
+  Source: https://github.com/qoli/AnyLanguageModel
+  Upstream: https://github.com/huggingface/AnyLanguageModel
   License: Apache License 2.0
-  Integrated as an official Swift Package Manager dependency without patches.
+  Integrated as a maintained fork with display-reasoning and cancellation patches.
   Its license remains authoritative for that component.
 
 pi-ai-swift

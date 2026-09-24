@@ -75,6 +75,7 @@ public struct PiAILanguageModel: LanguageModel {
       custom: providerOptions
     )
     var transcriptEntries: [Transcript.Entry] = []
+    var reasoning: String?
 
     var toolIterations = 0
     while true {
@@ -87,6 +88,7 @@ public struct PiAILanguageModel: LanguageModel {
         options: generationOptions
       )
       let result = try await collect(runtime.stream(request))
+      if let delta = result.reasoning { reasoning = (reasoning ?? "") + delta }
 
       if !result.toolCalls.isEmpty {
         guard toolIterations < providerOptions.maximumToolIterations else {
@@ -106,7 +108,8 @@ public struct PiAILanguageModel: LanguageModel {
           return LanguageModelSession.Response(
             content: empty.content,
             rawContent: empty.raw,
-            transcriptEntries: ArraySlice(transcriptEntries)
+            transcriptEntries: ArraySlice(transcriptEntries),
+            reasoning: reasoning
           )
         }
         transcriptEntries.append(contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
@@ -125,7 +128,8 @@ public struct PiAILanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: try ProviderMapper.content(type, from: raw),
         rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries)
+        transcriptEntries: ArraySlice(transcriptEntries),
+        reasoning: reasoning
       )
     }
   }
@@ -156,6 +160,7 @@ public struct PiAILanguageModel: LanguageModel {
             for: type, options: options, custom: custom)
           var transcriptEntries: [Transcript.Entry] = []
           var toolIterations = 0
+          var reasoning: String?
           while true {
             try Task.checkCancellation()
             let request = ProviderRequest(
@@ -167,9 +172,11 @@ public struct PiAILanguageModel: LanguageModel {
               options: generationOptions
             )
             var yieldedCurrentRound = false
-            let result = try await collect(runtime.stream(request)) { text in
+            let priorReasoning = reasoning
+            let result = try await collect(runtime.stream(request)) { text, roundReasoning in
+              reasoning = roundReasoning.map { (priorReasoning ?? "") + $0 } ?? priorReasoning
               if let snapshot = try ProviderMapper.snapshot(
-                text, for: type, transcriptEntries: transcriptEntries
+                text, for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
               ) {
                 continuation.yield(snapshot)
                 yieldedCurrentRound = true
@@ -188,7 +195,7 @@ public struct PiAILanguageModel: LanguageModel {
               transcriptEntries.append(contentsOf: try ProviderMapper.entries(from: result.content))
               if resolution.stopped {
                 if let snapshot = try ProviderMapper.snapshot(
-                  "", for: type, transcriptEntries: transcriptEntries
+                  "", for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
                 ) {
                   continuation.yield(snapshot)
                 }
@@ -197,7 +204,7 @@ public struct PiAILanguageModel: LanguageModel {
               transcriptEntries.append(
                 contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
               if let snapshot = try ProviderMapper.snapshot(
-                "", for: type, transcriptEntries: transcriptEntries
+                "", for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
               ) {
                 continuation.yield(snapshot)
               }
@@ -215,7 +222,7 @@ public struct PiAILanguageModel: LanguageModel {
             _ = try ProviderMapper.content(type, from: raw)
             if !yieldedCurrentRound {
               if let snapshot = try ProviderMapper.snapshot(
-                result.text, for: type, transcriptEntries: transcriptEntries
+                result.text, for: type, transcriptEntries: transcriptEntries, reasoning: reasoning
               ) {
                 continuation.yield(snapshot)
               }
@@ -234,9 +241,10 @@ public struct PiAILanguageModel: LanguageModel {
 
   private func collect(
     _ stream: AsyncThrowingStream<ProviderEvent, any Error>,
-    onText: ((String) throws -> Void)? = nil
+    onUpdate: ((String, String?) throws -> Void)? = nil
   ) async throws -> CollectedResponse {
     var text = ""
+    var reasoning: String?
     var content: [ProviderAssistantContent] = []
     var callIndices: [String: Int] = [:]
     var openCalls: [String: String] = [:]
@@ -280,7 +288,7 @@ public struct PiAILanguageModel: LanguageModel {
         )
       case .textDelta(let delta):
         text += delta
-        try onText?(text)
+        try onUpdate?(text, reasoning)
         if case .text(let previous) = content.last {
           content[content.count - 1] = .text(previous + delta)
         } else {
@@ -329,7 +337,12 @@ public struct PiAILanguageModel: LanguageModel {
           )
         }
         _ = try await assets.save(asset)
-      case .usage, .reasoningDelta, .reasoningSignatureDelta:
+      case .reasoningDelta(let delta):
+        guard !delta.isEmpty else { continue }
+        reasoning = (reasoning ?? "") + delta
+        try onUpdate?(text, reasoning)
+      case .usage, .reasoningSignatureDelta:
+        // Display text is independent of accounting and opaque replay state.
         break
       case .responseSnapshot(let snapshot):
         try validate(snapshot)
@@ -392,6 +405,7 @@ public struct PiAILanguageModel: LanguageModel {
     let assistantMessage = calls.isEmpty ? nil : try terminalSnapshot.replayAssistantMessage()
     return CollectedResponse(
       text: text,
+      reasoning: reasoning,
       toolCalls: calls,
       content: content,
       assistantMessage: assistantMessage
@@ -537,6 +551,7 @@ public struct PiAILanguageModel: LanguageModel {
 
 private struct CollectedResponse: Sendable {
   let text: String
+  let reasoning: String?
   let toolCalls: [ProviderToolCall]
   let content: [ProviderAssistantContent]
   let assistantMessage: ProviderAssistantMessage?
@@ -719,18 +734,22 @@ private enum ProviderMapper {
   static func snapshot<Content: Generable>(
     _ text: String,
     for type: Content.Type,
-    transcriptEntries: [Transcript.Entry] = []
+    transcriptEntries: [Transcript.Entry] = [],
+    reasoning: String? = nil
   ) throws -> LanguageModelSession.ResponseStream<Content>.Snapshot? {
     if type == String.self {
       let raw = GeneratedContent(text)
       return .init(
         content: (text as! Content).asPartiallyGenerated(), rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries)
+        transcriptEntries: ArraySlice(transcriptEntries), reasoning: reasoning
       )
     }
     let raw: GeneratedContent
     do {
-      raw = try GeneratedContent(json: text)
+      // An empty object represents not-yet-generated fields, not reasoning JSON.
+      raw =
+        text.isEmpty && reasoning != nil
+        ? GeneratedContent(properties: [:]) : try GeneratedContent(json: text)
     } catch {
       throw AIReasoningCoreError(
         .invalidStructuredOutput,
@@ -739,7 +758,8 @@ private enum ProviderMapper {
     }
     guard let partial = try? partiallyGenerated(type, from: raw) else { return nil }
     return .init(
-      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries)
+      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries),
+      reasoning: reasoning
     )
   }
 

@@ -3,12 +3,68 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## Display reasoning (published through the maintained fork)
+
+The maintained dependency is `qoli/AnyLanguageModel/main`. The display-reasoning
+contract is published there at `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`, based on
+huggingface main `6136ad3a3c9bc418ded7d29ac37ec4862671f68a`:
+
+- `LanguageModelSession.Response.reasoning: String?`;
+- `LanguageModelSession.ResponseStream.Snapshot.reasoning: String?`;
+- trailing `reasoning: String? = nil` initializer arguments, including the
+  single-value response stream, preserving existing source calls;
+- forwarding through stream collection and schema conversion without changing
+  tool execution or Transcript types;
+- a demonstrated cancellation repair: `wrapStream` checks cancellation after
+  the upstream loop before committing the final response. A cancelled
+  `AsyncThrowingStream` can otherwise appear to end normally and commit its
+  last partial snapshot (including a reasoning-only empty answer).
+
+The value is cumulative provider-public display text for one generation,
+including its tool rounds. `nil` means no display text was supplied. It is not
+opaque replay data, a token count, or model-facing conversation context.
+
+The user authorized adopting and publishing through the fork on 2026-09-25.
+[Upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264)
+remains available for contribution upstream; its merge is not a distribution
+gate for Core or SwiftChat. Package manifests and lockfiles use the published
+fork, never a sibling path override. Optional future candidate verification can
+still use the disposable `Scripts/check-display-reasoning.py` harness.
+
+Local verification on 2026-09-25:
+
+- AnyLanguageModel: 562 deterministic tests passed, including six reasoning
+  tests. Live provider tests were skipped and Ollama integration tests excluded.
+  An initial unfiltered run attempted localhost Ollama and failed with connection
+  refused; it supplied no model response and is not acceptance evidence.
+- Core: 45 tests passed; formatting, generic iOS Simulator build and whitespace
+  checks passed. This includes cumulative reasoning, unchanged-answer updates,
+  final collection, tool rounds/replay/execution count, stopped tools, structured
+  object and scalar output, cancellation, terminal mismatch, and usage-only input.
+- SwiftChat: 24 coordinator tests, macOS build, iOS Simulator build, and both
+  renderer fixtures passed. Tests cover separate bridge deltas, presentation
+  persistence/reopening, exclusion from follow-up model requests, and completion.
+- Both integration harnesses resolved published pi-ai-swift/main
+  `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`; pi-ai-swift was not modified.
+
+Core evidence is in `/tmp/AIReasoningCore-reasoning-{test,ios,format}.log`.
+App evidence is in `/tmp/SwiftChat-reasoning-{macOS-test,iOS}-final.log`.
+These are local build/test results, not live provider or native-window acceptance.
+
+Published-fork acceptance on 2026-09-25: ordinary `swift test` passed all
+45 tests; recursive Swift format lint, Core iOS Simulator build, Smoke iOS
+Simulator build, and whitespace checks passed. Both resolution snapshots bind
+`qoli/AnyLanguageModel` to `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11` and
+pi-ai-swift to `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. Xcode builds used
+`-skipMacroValidation` after verifying the fork did not alter macro sources;
+no local dependency override was used.
+
 ## AnyLanguageModel contract-only product
 
-AnyLanguageModel `main` at `1f6641a2ffa1f54923b0812fbbffe84fd9fdfbc8`
-exposes one library product. Its contract types and its
-provider implementations share the same target, so importing the protocol family
-also compiles EventSource, SwiftNIO and JSONSchema.
+The maintained AnyLanguageModel fork at `9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`
+exposes one library product. Its contract types and provider implementations
+share the same target, so importing the protocol family also compiles EventSource
+and JSONSchema. SwiftNIO is now behind optional HTTP transport traits.
 
 AIReasoningCore source code uses the contract family but the dependency graph is
 not yet contract-only. A publishable minimal runtime requires AnyLanguageModel to
@@ -93,7 +149,8 @@ edited. Consumer assertions live in
 
 This is local integration evidence. The repair was pushed to pi-ai-swift `main`
 as `60d47d489435fca8f2737d1ebc7d6d78505a881d`. Both Core resolution
-snapshots now contain that commit. SwiftChat's own resolution and product
+snapshots contained that commit at acceptance; the fork integration now resolves
+pi-ai-swift `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. SwiftChat's own resolution and product
 acceptance remain separate evidence.
 
 ## Typed reasoning effort integration (resolved)
@@ -105,8 +162,8 @@ It does not hard-code the selectable effort levels.
 
 The 2026-09-20 remote-main integration was verified against published
 pi-ai-swift commit `d0fb08df6cad382c336b229fe4ebb56956537664`. Both
-`Package.resolved` snapshots resolved that exact revision at the time. They now
-resolve `60d47d489435fca8f2737d1ebc7d6d78505a881d`. The package
+`Package.resolved` snapshots resolved that exact revision at the time. The current fork integration
+resolves `93fcae3a6a4c11c29dcc6f02f0f4e0ca02bf33f1`. The package
 declarations continue to track `main`, with no sibling package override.
 
 Verification on the published revision:
