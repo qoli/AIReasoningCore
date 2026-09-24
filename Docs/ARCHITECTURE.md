@@ -56,10 +56,9 @@ interface around it.
 - Structured streaming snapshots may contain partial JSON. Final structured
   responses must pass complete JSON validation before conversion to the requested
   type; truncated JSON is rejected even if the partial parser could repair it.
-- Display reasoning uses the proposed AnyLanguageModel `Response.reasoning`
-  and `ResponseStream.Snapshot.reasoning` optional string contract (publication
-  gate below). It accumulates the nonempty `reasoningDelta` strings in event
-  order across every provider round of one generation, without inserted separators.
+- Display reasoning uses the maintained AnyLanguageModel fork's `Response.reasoning`
+  and `ResponseStream.Snapshot.reasoning` optional string contract. It accumulates
+  the nonempty `reasoningDelta` strings in event order across every provider round of one generation, without inserted separators.
   A new generation starts at `nil`. Reasoning-only updates yield snapshots even
   when answer text is unchanged. Answer content remains scoped to its provider
   round as before. Before structured fields arrive, an empty structure is used

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Core with the unpublished AnyLanguageModel display-reasoning patch.
+"""Verify Core with the candidate AnyLanguageModel display-reasoning patch.
 
 Creates a disposable source copy; never changes a checkout or its resolution.
 Only dependency resolution uses the network. Tests do not call live providers.
@@ -22,7 +22,7 @@ def main():
     core = pathlib.Path(__file__).resolve().parents[1]
     upstream = args.any_language_model.resolve()
     manifest, count = re.subn(
-        r'\.package\(\s*url:\s*"https://github.com/huggingface/AnyLanguageModel.git",\s*branch:\s*"main"\s*\)',
+        r'\.package\(\s*url:\s*"https://github.com/qoli/AnyLanguageModel.git",\s*branch:\s*"main"\s*\)',
         lambda _: f'.package(name: "AnyLanguageModel", path: {json.dumps(str(upstream))})',
         (core / "Package.swift").read_text(),
     )
