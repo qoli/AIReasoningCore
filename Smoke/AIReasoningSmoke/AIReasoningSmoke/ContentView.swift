@@ -13,12 +13,9 @@ struct ContentView: View {
   @StateObject private var smokeViewModel: SmokeViewModel
   @StateObject private var liveViewModel = LiveProviderViewModel()
   @State private var selectedTab: Tab
-  private let browserHost: SmokeBrowserHost
 
   init() {
-    let browserHost = SmokeBrowserHost()
-    self.browserHost = browserHost
-    _smokeViewModel = StateObject(wrappedValue: SmokeViewModel(browserHost: browserHost))
+    _smokeViewModel = StateObject(wrappedValue: SmokeViewModel())
     _selectedTab = State(
       initialValue: ProcessInfo.processInfo.arguments.contains("--live-provider")
         ? .liveProvider : .deterministic
@@ -27,7 +24,7 @@ struct ContentView: View {
 
   var body: some View {
     TabView(selection: $selectedTab) {
-      DeterministicSmokeView(viewModel: smokeViewModel, browserHost: browserHost)
+      DeterministicSmokeView(viewModel: smokeViewModel)
         .tabItem { Label("Deterministic", systemImage: "checkmark.shield") }
         .tag(Tab.deterministic)
 
@@ -41,7 +38,6 @@ struct ContentView: View {
 
 private struct DeterministicSmokeView: View {
   @ObservedObject var viewModel: SmokeViewModel
-  let browserHost: SmokeBrowserHost
 
   var body: some View {
     NavigationStack {
@@ -57,9 +53,11 @@ private struct DeterministicSmokeView: View {
             .disabled(viewModel.isRunning)
             .accessibilityIdentifier("run-smoke-suite")
         } header: {
-          Text("Native + Interactive Tools")
+          Text("AIReasoningCore Provider Adapter")
         } footer: {
-          Text("Deterministic fixtures only. No provider credential or paid API is used.")
+          Text(
+            "Deterministic fixtures only. The echo Tool is supplied externally to verify continuation."
+          )
         }
 
         Section("Checks") {
@@ -80,22 +78,6 @@ private struct DeterministicSmokeView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("smoke-check-\(check.id)")
-          }
-        }
-
-        Section("App-owned browser") {
-          SmokeBrowserView(host: browserHost)
-            .frame(minHeight: 240)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay { RoundedRectangle(cornerRadius: 8).stroke(.quaternary) }
-            .accessibilityIdentifier("smoke-browser")
-        }
-
-        if let preview = viewModel.assetPreview {
-          Section("Managed image asset") {
-            Image(uiImage: preview)
-              .resizable().scaledToFit().frame(maxHeight: 180)
-              .accessibilityIdentifier("smoke-asset-preview")
           }
         }
 

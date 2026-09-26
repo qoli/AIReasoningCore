@@ -39,18 +39,24 @@ public struct PiAILanguageModel: LanguageModel {
   private let runtime: any ProviderRuntime
   private let providerID: String
   private let modelID: String
-  private let assets: AssetStore?
+  private let onAsset: @Sendable (ProviderAsset) async throws -> Void
 
   public init(
     runtime: any ProviderRuntime,
     providerID: String,
     modelID: String,
-    assets: AssetStore? = nil
+    onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil
   ) {
     self.runtime = runtime
     self.providerID = providerID
     self.modelID = modelID
-    self.assets = assets
+    self.onAsset =
+      onAsset ?? { _ in
+        throw AIReasoningCoreError(
+          .unhandledProviderAsset,
+          "provider emitted an asset but no asset handler was configured"
+        )
+      }
   }
 
   public func respond<Content>(
@@ -318,13 +324,7 @@ public struct PiAILanguageModel: LanguageModel {
         }
         content[index] = .toolCall(call)
       case .asset(let asset):
-        guard let assets else {
-          throw AIReasoningCoreError(
-            .missingAssetStore,
-            "provider emitted an asset without an AssetStore"
-          )
-        }
-        _ = try await assets.save(asset)
+        try await onAsset(asset)
       case .reasoningDelta(let delta):
         guard !delta.isEmpty else { continue }
         if let index = reasoningIndex, case .reasoning(let previous) = content[index] {

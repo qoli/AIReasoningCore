@@ -49,7 +49,6 @@ final class LiveProviderViewModel: ObservableObject {
 
   private var credentialStore: KeychainProviderCredentialStore?
   private var runtime: BuiltinProviderRuntime?
-  private var assets: AssetStore?
   private var authorizationTask: Task<Void, Never>?
   private var challengeContinuation: CheckedContinuation<AuthorizationResponse, any Error>?
   private var authorizationSecret: String?
@@ -214,7 +213,7 @@ final class LiveProviderViewModel: ObservableObject {
   }
 
   private func configureIfNeeded() throws {
-    if runtime != nil, credentialStore != nil, assets != nil { return }
+    if runtime != nil, credentialStore != nil { return }
     guard
       let applicationSupport = FileManager.default.urls(
         for: .applicationSupportDirectory,
@@ -235,9 +234,6 @@ final class LiveProviderViewModel: ObservableObject {
     runtime = try BuiltinProviderRuntime(
       credentialStore: store,
       radiusCatalogPersistenceURL: root.appendingPathComponent("RadiusCatalog.json")
-    )
-    assets = try AssetStore(
-      directory: root.appendingPathComponent("Assets", isDirectory: true)
     )
   }
 
@@ -459,21 +455,21 @@ final class LiveProviderViewModel: ObservableObject {
 
     do {
       try configureIfNeeded()
-      guard let runtime, let model = selectedModel, let assets else {
+      guard let runtime, let model = selectedModel else {
         throw LiveSmokeFailure("Select a provider and model before running a task")
       }
       let detail: String
       switch task {
       case .textStream:
-        detail = try await runTextStream(runtime: runtime, model: model, assets: assets)
+        detail = try await runTextStream(runtime: runtime, model: model)
       case .structuredOutput:
-        detail = try await runStructuredOutput(runtime: runtime, model: model, assets: assets)
+        detail = try await runStructuredOutput(runtime: runtime, model: model)
       case .functionCall:
-        detail = try await runFunctionCall(runtime: runtime, model: model, assets: assets)
+        detail = try await runFunctionCall(runtime: runtime, model: model)
       case .imageInput:
-        detail = try await runImageInput(runtime: runtime, model: model, assets: assets)
+        detail = try await runImageInput(runtime: runtime, model: model)
       case .imageGeneration:
-        detail = try await runImageGeneration(runtime: runtime, model: model, assets: assets)
+        detail = try await runImageGeneration(runtime: runtime, model: model)
       }
       result.status = .passed
       result.detail = detail
@@ -489,8 +485,7 @@ final class LiveProviderViewModel: ObservableObject {
 
   private func runTextStream(
     runtime: BuiltinProviderRuntime,
-    model: ProviderModel,
-    assets: AssetStore
+    model: ProviderModel
   ) async throws -> String {
     guard model.capabilities.textInput else {
       throw LiveSmokeFailure("Selected model does not support text input")
@@ -499,8 +494,7 @@ final class LiveProviderViewModel: ObservableObject {
       model: PiAILanguageModel(
         runtime: runtime,
         providerID: model.providerID,
-        modelID: model.id,
-        assets: assets
+        modelID: model.id
       )
     )
     var snapshots = 0
@@ -520,8 +514,7 @@ final class LiveProviderViewModel: ObservableObject {
 
   private func runFunctionCall(
     runtime: BuiltinProviderRuntime,
-    model: ProviderModel,
-    assets: AssetStore
+    model: ProviderModel
   ) async throws -> String {
     guard model.capabilities.toolCalling else {
       throw LiveSmokeFailure("Selected model does not support tool calling")
@@ -531,8 +524,7 @@ final class LiveProviderViewModel: ObservableObject {
       model: PiAILanguageModel(
         runtime: runtime,
         providerID: model.providerID,
-        modelID: model.id,
-        assets: assets
+        modelID: model.id
       ),
       tools: [LiveEchoTool(recorder: recorder)]
     )
@@ -554,8 +546,7 @@ final class LiveProviderViewModel: ObservableObject {
 
   private func runStructuredOutput(
     runtime: BuiltinProviderRuntime,
-    model: ProviderModel,
-    assets: AssetStore
+    model: ProviderModel
   ) async throws -> String {
     guard model.capabilities.structuredOutput else {
       throw LiveSmokeFailure("Selected model does not support structured output")
@@ -564,8 +555,7 @@ final class LiveProviderViewModel: ObservableObject {
       model: PiAILanguageModel(
         runtime: runtime,
         providerID: model.providerID,
-        modelID: model.id,
-        assets: assets
+        modelID: model.id
       )
     )
     let response = try await session.respond(
@@ -583,8 +573,7 @@ final class LiveProviderViewModel: ObservableObject {
 
   private func runImageInput(
     runtime: BuiltinProviderRuntime,
-    model: ProviderModel,
-    assets: AssetStore
+    model: ProviderModel
   ) async throws -> String {
     guard model.capabilities.imageInput else {
       throw LiveSmokeFailure("Selected model does not support image input")
@@ -604,8 +593,7 @@ final class LiveProviderViewModel: ObservableObject {
       model: PiAILanguageModel(
         runtime: runtime,
         providerID: model.providerID,
-        modelID: model.id,
-        assets: assets
+        modelID: model.id
       ),
       transcript: transcript
     )
@@ -621,8 +609,7 @@ final class LiveProviderViewModel: ObservableObject {
 
   private func runImageGeneration(
     runtime: BuiltinProviderRuntime,
-    model: ProviderModel,
-    assets: AssetStore
+    model: ProviderModel
   ) async throws -> String {
     guard model.capabilities.imageGeneration else {
       throw LiveSmokeFailure("Selected model does not support image generation")
@@ -631,49 +618,36 @@ final class LiveProviderViewModel: ObservableObject {
       outputModality: .image,
       toolChoice: nil
     )
-    let generator = ImageGenerator { [providerID = model.providerID, modelID = model.id] prompt in
-      let request = ProviderRequest(
-        id: UUID().uuidString,
-        providerID: providerID,
-        modelID: modelID,
-        messages: [.user([.text(prompt)])],
-        tools: [],
-        options: options
-      )
-      var started = false
-      var completed = false
-      var images: [ProviderAsset] = []
-      for try await event in runtime.stream(request) {
-        switch event {
-        case .responseStarted: started = true
-        case .asset(let asset) where asset.kind == .image: images.append(asset)
-        case .completed: completed = true
-        default: break
-        }
-      }
-      guard started, completed, images.count == 1 else {
-        throw LiveSmokeFailure(
-          "Image provider must emit exactly one image between start and completion"
-        )
-      }
-      return GeneratedImage(data: images[0].data, mimeType: images[0].mimeType)
-    }
-    let tool = ImageGenerationTool(generator: generator, assets: assets)
-    let reference = try await tool.call(
-      arguments: try ImageGenerationTool.Arguments(
-        GeneratedContent(properties: ["prompt": imagePrompt])
-      )
+    let request = ProviderRequest(
+      id: UUID().uuidString,
+      providerID: model.providerID,
+      modelID: model.id,
+      messages: [.user([.text(imagePrompt)])],
+      tools: [],
+      options: options
     )
-    guard reference.hasPrefix("asset://") else {
-      throw LiveSmokeFailure("Image tool did not return an asset reference")
+    var started = false
+    var completed = false
+    var images: [ProviderAsset] = []
+    for try await event in runtime.stream(request) {
+      switch event {
+      case .responseStarted: started = true
+      case .asset(let asset) where asset.kind == .image: images.append(asset)
+      case .completed: completed = true
+      default: break
+      }
     }
-    let assetID = String(reference.dropFirst("asset://".count))
-    let data = try await assets.data(id: assetID)
-    guard let image = UIImage(data: data) else {
+    guard started, completed, images.count == 1 else {
+      throw LiveSmokeFailure(
+        "Image provider must emit exactly one image between start and completion"
+      )
+    }
+    let asset = images[0]
+    guard let image = UIImage(data: asset.data) else {
       throw LiveSmokeFailure("Generated provider asset is not a decodable image")
     }
     generatedImage = image
-    return "\(data.count) bytes · asset://\(assetID)"
+    return "\(asset.data.count) bytes · provider asset \(asset.id)"
   }
 
   private func generationOptions(

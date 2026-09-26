@@ -9,21 +9,15 @@ defines no parallel inference protocol, session type, transcript or tool system.
 App
 └── LanguageModelSession
     ├── PiAILanguageModel
-    │   └── ProviderRuntime (pi-ai-swift)
-    ├── AnyLanguageModel.Tool
-    │   ├── HTTPTool
-    │   ├── WebReadTool
-    │   ├── ImageGenerationTool
-    │   ├── DocumentTool
-    │   ├── BrowserTool
-    │   └── AssetManagementTool
-    ├── ConversationStore
-    └── AssetStore
+    │   ├── ProviderRuntime (pi-ai-swift)
+    │   └── optional provider asset callback
+    └── AnyLanguageModel.Tool (Host supplied)
 ```
 
 `ProviderRuntime` is injected because a live runtime and a deterministic test
 runtime are both real adapters. AIReasoningCore does not define another provider
-interface around it.
+interface around it. Model and Tools are peer dependencies of
+`LanguageModelSession`; `PiAILanguageModel` does not own Host capabilities.
 
 ## Ownership
 
@@ -77,29 +71,22 @@ interface around it.
   A cancellation cannot roll back external tool side effects; an unfinished tool
   has no fabricated output. The session policy and drain API belong to
   AnyLanguageModel, not the provider runtime.
-- `ConversationStore` atomically persists `Transcript` plus opaque provider state.
-  Both loading and listing validate the persisted schema version.
-- `AssetStore` atomically persists generated images, files and browser snapshots.
-- `BrowserOperator` is an app-supplied closure over the app-owned browser.
-- Host restrictions are an app-owned transport concern. Core does not expose a
-  host allowlist or enforce host-based redirect rules. Apps needing those rules
-  can supply their own `HTTPClient`. `HTTPAccessPolicy` only configures allowed
-  URL schemes.
+- Provider `.asset` events are delivered unchanged through the optional
+  `PiAILanguageModel.onAsset` callback, serially and in event order. The callback
+  is awaited before the next provider event is consumed. Its error is propagated
+  without retry, deduplication, or rollback. Storage, presentation and retention
+  belong to the Host. Without a callback, the first asset fails explicitly.
+- AnyLanguageModel currently creates response transcript entries with empty
+  asset IDs. Core therefore does not invent an asset reference or persistence
+  layer; asset-only responses remain unrepresentable until the upstream contract
+  grows an asset seam.
 
-## Read limits
+## Host ownership
 
-`HTTPTool` and `WebReadTool` pass their response byte limit through
-`HTTPRequest.maximumResponseBytes`. The URLSession transport consumes response
-bytes incrementally and cancels the task on overflow. Injected transports must
-honor this limit while reading; `HTTPClient.send` additionally rejects an
-oversized returned body, but cannot control memory allocated inside a custom
-transport. The limit counts body bytes delivered by URLSession, rather than
-trusting the Content-Length header. URLSession may maintain its own transport
-buffers.
-
-`DocumentTool` reads in chunks of at most 64 KiB and probes at most one byte past
-its limit. A zero byte limit permits empty content; negative byte limits fail
-explicitly. These limits do not change URL policy or redirect handling.
+Conversation persistence and external capabilities are outside this package.
+The Host composes any browser, filesystem, HTTP, shell, MCP, or other capability
+as an `AnyLanguageModel.Tool` alongside `PiAILanguageModel`. Tests use a minimal
+deterministic Tool only to verify the provider continuation loop.
 
 ## Explicit failures
 
@@ -109,13 +96,11 @@ The runtime fails instead of substituting another behavior when:
 - a provider response has the wrong provider/model identity;
 - a provider omits, duplicates, reorders or contradicts its terminal response snapshot;
 - a tool name is unknown;
-- a provider emits an asset without an `AssetStore`;
-- a URL uses a scheme outside the configured allowed schemes;
-- a document path escapes its configured root;
-- a persisted schema version is unsupported.
+- a provider emits an asset without an asset callback.
 
 ## Excluded system
 
-Coding sandbox behavior is outside this repository. The rewritten package does
-not contain shell, git, build automation, CLI-agent drivers, iSH, root filesystems
-or compatibility servers.
+Host capability and product persistence behavior are outside this repository.
+The package does not contain browser, filesystem, HTTP/Web, image-generation,
+asset-management, shell, git, build-automation, CLI-agent, iSH, root-filesystem,
+or compatibility-server implementations.

@@ -36,10 +36,13 @@ documentation in the same scoped change.
   prompt, tool, schema, and generation options and pi-ai-swift request DTOs.
 - Session orchestration, tool-call execution, tool-result transcript entries,
   cancellation propagation, and caller-facing error translation.
-- Conversation persistence and its associated metadata or sidecars.
-- Native tools: HTTP/API, web read, image generation, and document read/write.
-- Interactive tools: app-owned browser operation and asset management.
-- Product-facing composition and host integration above the provider runtime.
+- Delivery of pi-ai-swift provider asset events through an injected callback.
+
+Host applications own conversation persistence, asset storage and presentation,
+and every external capability supplied as an `AnyLanguageModel.Tool`, including
+browser, filesystem, network, shell, and MCP integration. Do not add a capability
+graph or prebuilt Host tools to AIReasoningCore without a demonstrated provider
+adapter requirement.
 
 AIReasoningCore must not implement provider wire protocols, provider
 authentication, model catalogs, or provider-specific streaming semantics.
@@ -59,8 +62,8 @@ authentication, model catalogs, or provider-specific streaming semantics.
   upstream pin, capability mapping, fixtures, and reconstruction procedure.
 
 pi-ai-swift must remain independent of AnyLanguageModel, session/tool
-orchestration, conversation persistence, browser/document/image tools, asset
-storage, product UI, and coding environments.
+orchestration, conversation persistence, Host tools, asset storage, product UI,
+and coding environments.
 
 ### AnyLanguageModel upstream owns
 
@@ -79,8 +82,10 @@ Classify the change before editing:
   protocol or authorization flow, changes provider DTOs/events, or follows a
   change in the pi TypeScript upstream.
 - Change AIReasoningCore when behavior concerns AnyLanguageModel mapping,
-  session lifecycle, tool execution, persistence, native/interactive tools, or
-  app integration.
+  session lifecycle, tool execution, provider asset delivery, or app-facing
+  error translation at that adapter seam.
+- Change the Host repository when behavior concerns persistence, asset storage,
+  browser/filesystem/network/shell capabilities, or product composition.
 - Change both only when the public provider seam itself must evolve. Keep the
   seam narrow and make the pi-ai-swift change independently usable and tested.
 

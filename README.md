@@ -5,7 +5,8 @@ is `PiAILanguageModel`, which conforms directly to
 `AnyLanguageModel.LanguageModel` and is used through `LanguageModelSession`.
 
 The package deliberately contains no coding sandbox, shell, CLI-agent bridge,
-iSH runtime, provider compatibility server, or second language-model protocol.
+iSH runtime, provider compatibility server, Host capability framework, or second
+language-model protocol.
 
 ## Modules
 
@@ -14,19 +15,15 @@ The package ships one library target:
 ```text
 AIReasoningCore
 ├── PiAILanguageModel
-├── Provider mapping
-├── Conversation persistence
-├── Native tools
-│   ├── HTTP
-│   ├── Web read
-│   ├── Image generation
-│   └── Document read/write
-└── Interactive tools
-    ├── Browser operation
-    └── Asset management
+├── AnyLanguageModel ↔ pi-ai-swift mapping
+├── Provider streaming and replay state
+├── Reasoning and tool-call continuation
+└── Provider asset delivery callback
 ```
 
-Browser behavior is injected by the app through `BrowserOperator`.
+External capabilities are ordinary `AnyLanguageModel.Tool` values owned and
+injected by the Host. Conversation persistence, browser/filesystem/network
+access, asset storage, and asset presentation are not shipped by this package.
 
 ## Reasoning effort
 
@@ -49,10 +46,11 @@ acceptance boundaries are recorded in `Docs/UPSTREAM_GATES.md`.
 
 ## iOS smoke verification
 
-The deterministic iOS smoke app exercises every Native Tool and Interactive
-Tool on an iOS Simulator, including a visible app-owned `WKWebView`, valid image
-assets, sandboxed document I/O, and a real `URLSession` transport adapter. It
-writes a machine-readable report that the runner reads back from the app
+The deterministic iOS smoke app exercises the Core-owned provider adapter path:
+text and structured responses, reasoning, external Tool continuation, transcript
+checkpoints, replay metadata, and provider asset delivery. The Tool fixture is a
+small deterministic echo implementation; it is not a shipped Host capability.
+The app writes a machine-readable report that the runner reads back from the app
 container:
 
 ```bash
@@ -78,8 +76,8 @@ advances to the current remote `main` commit.
 ## Provider runtime status
 
 `PiAILanguageModel` accepts an injected `PiAIProviderRuntime.ProviderRuntime`.
-The adapter, mapping, structured output, non-stream tool loop, persistence and
-tooling are verified with a deterministic runtime. The iOS Smoke app also has a
+The adapter, mapping, structured output, reasoning, cancellation and Tool
+continuation are verified with a deterministic runtime. The iOS Smoke app also has a
 manual Live Provider Console for pi-ai-swift catalog, authorization, streaming,
 function-call, image-input, and image-output acceptance. Live results remain
 environmental evidence and do not replace deterministic fixtures.
@@ -96,7 +94,9 @@ environmental evidence and do not replace deterministic fixtures.
   thought signatures, response identity and other opaque assistant state still
   lack full transcript representation.
 - Session-generated response transcript entries always use empty asset IDs.
-  Provider assets are persisted to `AssetStore`, outside `Transcript`.
+  Provider assets are delivered to the optional `PiAILanguageModel` `onAsset`
+  callback. The Host owns storage, presentation, and retention; a provider asset
+  fails explicitly when no callback is installed.
 - Formal dependency pins consume the published maintained fork. See
   [upstream gates](Docs/UPSTREAM_GATES.md) for exact revisions and verification.
 

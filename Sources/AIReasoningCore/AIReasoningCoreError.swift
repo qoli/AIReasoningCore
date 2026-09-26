@@ -7,15 +7,8 @@ public struct AIReasoningCoreError: Error, Sendable, Equatable, LocalizedError {
     case invalidStructuredOutput
     case unknownTool
     case toolIterationLimitExceeded
-    case unsupportedStreamingToolCalls
-    case missingAssetStore
-    case invalidURL
-    case disallowedURL
-    case responseTooLarge
-    case invalidDocumentPath
+    case unhandledProviderAsset
     case unsupportedOperation
-    case assetNotFound
-    case persistenceFailure
   }
 
   public let code: Code

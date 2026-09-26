@@ -711,6 +711,7 @@ final class PiAILanguageModelTests: XCTestCase {
     case missingToolResults
     case missingReplayAssistantMessage
     case missingPersistedAssistantMessage
+    case rejectedAsset
   }
 
   func testOneToolIterationAllowsFollowingFinalResponse() async throws {
@@ -975,20 +976,21 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
-  func testProviderAssetRequiresAssetStore() async throws {
+  func testProviderAssetRequiresHandler() async throws {
+    let asset = ProviderAsset(
+      id: "asset-1",
+      kind: .image,
+      mimeType: "image/png",
+      data: Data([1]),
+      providerMetadata: [:]
+    )
     let runtime = FakeRuntime { request in
       [
         .responseStarted(metadata(for: request)),
-        .asset(
-          ProviderAsset(
-            id: "asset-1",
-            kind: .image,
-            mimeType: "image/png",
-            data: Data([1]),
-            providerMetadata: [:]
-          )
-        ),
+        .asset(asset),
         .textDelta("image"),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.text("image")], finishReason: .stop)),
         .completed(.stop),
       ]
     }
@@ -998,9 +1000,115 @@ final class PiAILanguageModelTests: XCTestCase {
 
     do {
       _ = try await session.respond(to: "Generate")
-      XCTFail("expected missing asset store failure")
+      XCTFail("expected missing asset handler failure")
     } catch let error as AIReasoningCoreError {
-      XCTAssertEqual(error.code, .missingAssetStore)
+      XCTAssertEqual(error.code, .unhandledProviderAsset)
+    }
+  }
+
+  func testProviderAssetIsDeliveredToHandlerInBothResponseModes() async throws {
+    let assets = [
+      ProviderAsset(
+        id: "asset-1",
+        kind: .image,
+        mimeType: "image/png",
+        data: Data([1, 2, 3]),
+        providerMetadata: ["source": .string("first")]
+      ),
+      ProviderAsset(
+        id: "asset-2",
+        kind: .file,
+        mimeType: "application/octet-stream",
+        data: Data([4, 5]),
+        providerMetadata: ["source": .string("second")]
+      ),
+    ]
+    for streaming in [false, true] {
+      let recorder = AssetRecorder()
+      let runtime = FakeRuntime { request in
+        [
+          .responseStarted(metadata(for: request)),
+          .asset(assets[0]),
+          .asset(assets[1]),
+          .textDelta("image"),
+          .responseSnapshot(
+            responseSnapshot(for: request, content: [.text("image")], finishReason: .stop)),
+          .completed(.stop),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: runtime,
+          providerID: "test",
+          modelID: "model",
+          onAsset: { asset in await recorder.record(asset) }
+        )
+      )
+
+      let content =
+        try await streaming
+        ? session.streamResponse(to: "Generate").collect().content
+        : session.respond(to: "Generate").content
+
+      XCTAssertEqual(content, "image")
+      let recorded = await recorder.assets
+      XCTAssertEqual(recorded, assets)
+      let responseAssetIDs = session.transcript.compactMap { entry -> [String]? in
+        if case .response(let response) = entry { return response.assetIDs }
+        return nil
+      }.last
+      XCTAssertEqual(responseAssetIDs, [])
+    }
+  }
+
+  func testProviderAssetHandlerFailurePropagatesWithoutDeliveringLaterAssets() async throws {
+    let assets = [
+      ProviderAsset(
+        id: "asset-1", kind: .image, mimeType: "image/png", data: Data([1]),
+        providerMetadata: [:]),
+      ProviderAsset(
+        id: "asset-2", kind: .file, mimeType: "text/plain", data: Data([2]),
+        providerMetadata: [:]),
+    ]
+    for streaming in [false, true] {
+      let recorder = AssetRecorder()
+      let runtime = FakeRuntime { request in
+        [
+          .responseStarted(metadata(for: request)),
+          .asset(assets[0]),
+          .asset(assets[1]),
+          .textDelta("ignored"),
+          .responseSnapshot(
+            responseSnapshot(for: request, content: [.text("ignored")], finishReason: .stop)),
+          .completed(.stop),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: runtime,
+          providerID: "test",
+          modelID: "model",
+          onAsset: { asset in
+            await recorder.record(asset)
+            throw TestFailure.rejectedAsset
+          }
+        )
+      )
+
+      do {
+        if streaming {
+          _ = try await session.streamResponse(to: "Generate").collect()
+        } else {
+          _ = try await session.respond(to: "Generate")
+        }
+        XCTFail("expected asset handler failure")
+      } catch TestFailure.rejectedAsset {
+      } catch {
+        XCTFail("unexpected error: \(error)")
+      }
+
+      let recorded = await recorder.assets
+      XCTAssertEqual(recorded, [assets[0]])
     }
   }
 
@@ -1206,6 +1314,14 @@ private actor RequestRecorder {
 
   func record(_ request: ProviderRequest) {
     requests.append(request)
+  }
+}
+
+private actor AssetRecorder {
+  private(set) var assets: [ProviderAsset] = []
+
+  func record(_ asset: ProviderAsset) {
+    assets.append(asset)
   }
 }
 

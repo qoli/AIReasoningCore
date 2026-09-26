@@ -2,38 +2,27 @@
 
 This app has two deliberately separate verification surfaces:
 
-- **Deterministic Smoke** verifies Native Tools and Interactive Tools on an iOS
-  Simulator without credentials or paid traffic. It runs automatically and
-  writes the displayed evidence to `Documents/SmokeReport.json`.
+- **Deterministic Smoke** verifies the provider adapter and session semantics
+  owned by AIReasoningCore on an iOS Simulator without credentials or paid
+  traffic. It runs automatically and writes the displayed evidence to
+  `Documents/SmokeReport.json`.
 - **Live Provider Console** loads the pi-ai-swift catalog and lets a tester
   explicitly choose a provider, model, authorization method and generation
   options before making any network request.
 
 The deterministic suite covers:
 
-- `HTTPTool` through a real `URLSession` with a local `URLProtocol` fixture;
-- the complete `ProviderRuntime` → `PiAILanguageModel` →
-  `LanguageModelSession` tool-call and provider-continuation loop;
-- `WebReadTool` fetching and extracting static HTML;
-- `DocumentTool` writing, listing, and reading UTF-8 files in the app sandbox;
-- `ImageGenerationTool` through an injected deterministic generator, including
-  valid PNG decoding and `AssetStore` persistence;
-- `BrowserTool` through this app's visible, app-owned `WKWebView` adapter,
-  including open, wait, read, type, click, and snapshot;
-- `AssetManagementTool` listing and reading metadata for generated and browser
-  snapshot assets.
+- `ProviderRuntime` → `PiAILanguageModel` → `LanguageModelSession` text streaming;
+- typed structured output;
+- reasoning signature and provider-metadata replay through a Codable transcript;
+- the provider continuation loop with a minimal externally supplied echo Tool;
+- cancellation with a preserved reasoning checkpoint and no fabricated response;
+- unchanged provider asset delivery through the Host callback.
 
-The BrowserOperator target convention belongs to this smoke host:
-
-- `open.target` selects the fixture (`smoke://interactive`);
-- `read.target`, `type.target`, and `click.target` are CSS selectors;
-- `type.value` is the replacement input value.
-
-Passing this suite proves AIReasoningCore's tool interfaces and this concrete
-iOS WebKit host work together. It does not prove a downstream app's independent
-BrowserOperator, public Internet reachability, or live image generation. The
-HTTP fixture performs no DNS/TCP/TLS traffic, and the image generator is an
-injected deterministic adapter rather than a provider.
+Passing this suite proves the Core-owned adapter path works on iOS. The echo Tool
+is a deterministic fixture, not an AIReasoningCore capability. Browser,
+filesystem, HTTP/Web, image-generation, asset-management, persistence and other
+Host capabilities are intentionally outside this target's deterministic claims.
 
 ## Live Provider Console
 
@@ -49,8 +38,8 @@ Available manual checks are:
 - a real `echo(value:)` function call, including tool execution, continuation,
   and transcript preservation;
 - image input from Photos or an explicitly generated local fixture;
-- image output through the provider runtime, `ImageGenerationTool`, and
-  `AssetStore`, followed by native image decoding.
+- image output directly through the provider runtime, followed by native image
+  decoding. This is pi-ai-swift live-provider evidence, not a shipped Core Tool.
 
 Configuration includes model selection, API-key or OAuth authorization, an
 optional base URL, credential metadata, token and temperature limits, reasoning

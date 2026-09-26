@@ -10,8 +10,6 @@
 		A10000000000000000000020 /* AIReasoningSmokeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AIReasoningSmokeApp.swift */; };
 		A10000000000000000000021 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* ContentView.swift */; };
 		A10000000000000000000022 /* SmokeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* SmokeViewModel.swift */; };
-		A10000000000000000000023 /* SmokeBrowserHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* SmokeBrowserHost.swift */; };
-		A10000000000000000000024 /* SmokeHTTPProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* SmokeHTTPProtocol.swift */; };
 		A10000000000000000000025 /* AIReasoningCore in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000060 /* AIReasoningCore */; };
 		A10000000000000000000026 /* AnyLanguageModel in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000061 /* AnyLanguageModel */; };
 		A10000000000000000000027 /* PiAIProviderRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000062 /* PiAIProviderRuntime */; };
@@ -24,8 +22,6 @@
 		A10000000000000000000010 /* AIReasoningSmokeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIReasoningSmokeApp.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* SmokeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeViewModel.swift; sourceTree = "<group>"; };
-		A10000000000000000000013 /* SmokeBrowserHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeBrowserHost.swift; sourceTree = "<group>"; };
-		A10000000000000000000014 /* SmokeHTTPProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeHTTPProtocol.swift; sourceTree = "<group>"; };
 		A10000000000000000000015 /* AIReasoningSmoke.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AIReasoningSmoke.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000016 /* SmokeSessionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeSessionProbe.swift; sourceTree = "<group>"; };
 		A10000000000000000000017 /* LiveProviderModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveProviderModels.swift; sourceTree = "<group>"; };
@@ -61,8 +57,6 @@
 				A10000000000000000000010 /* AIReasoningSmokeApp.swift */,
 				A10000000000000000000011 /* ContentView.swift */,
 				A10000000000000000000012 /* SmokeViewModel.swift */,
-				A10000000000000000000013 /* SmokeBrowserHost.swift */,
-				A10000000000000000000014 /* SmokeHTTPProtocol.swift */,
 				A10000000000000000000016 /* SmokeSessionProbe.swift */,
 				A10000000000000000000017 /* LiveProviderModels.swift */,
 				A10000000000000000000018 /* LiveProviderViewModel.swift */,
@@ -160,8 +154,6 @@
 				A10000000000000000000020 /* AIReasoningSmokeApp.swift in Sources */,
 				A10000000000000000000021 /* ContentView.swift in Sources */,
 				A10000000000000000000022 /* SmokeViewModel.swift in Sources */,
-				A10000000000000000000023 /* SmokeBrowserHost.swift in Sources */,
-				A10000000000000000000024 /* SmokeHTTPProtocol.swift in Sources */,
 				A10000000000000000000028 /* SmokeSessionProbe.swift in Sources */,
 				A10000000000000000000029 /* LiveProviderModels.swift in Sources */,
 				A1000000000000000000002A /* LiveProviderViewModel.swift in Sources */,

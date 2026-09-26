@@ -124,9 +124,13 @@ across a reconstructed session is therefore not claimed.
 ## AnyLanguageModel response assets
 
 `LanguageModelSession` creates the final response transcript entry itself and
-sets `assetIDs` to an empty array. Provider assets are safely written to
-`AssetStore`, but they cannot be linked into that transcript entry without an
-upstream contract change.
+sets `assetIDs` to an empty array. `PiAILanguageModel` can deliver provider asset
+events unchanged through its optional `onAsset` callback, but Core cannot link
+them into that transcript entry without an upstream contract change. Storage,
+presentation and retention therefore belong to the Host. Asset-only responses
+remain unrepresentable through the current AnyLanguageModel response contract;
+Core does not substitute an empty successful response or invent a parallel asset
+reference format.
 
 ## pi-ai-swift pin update (2026-09-25)
 
