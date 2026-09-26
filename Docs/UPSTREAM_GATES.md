@@ -12,11 +12,19 @@ carry reasoning via `transcriptEntries`; existing initializer selectors are
 restored. This follows the direction requested in
 [upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264#issuecomment-5819322352).
 
-The maintained `qoli/AnyLanguageModel/main` now publishes this contract at
-`78498ee06dc07f24d57cd660987edb354c35f33c`, replacing the prototype
-`9265b9d8b8d3ffbf1d28cbf5ad147105a8198f11`. Core and Smoke resolution snapshots
-adopt the published commit without local package overrides. pi-ai-swift remains
-remote `main` revision `44c079d92d6ffbcdfbef73019664d04f1ce93269`.
+The maintained `qoli/AnyLanguageModel/main` publishes the reviewed reasoning and
+cancellation refactors at `4d088af3331dc58ca68c8587c3bc84f205c7ec76` (2026-09-26),
+replacing `78498ee`. Core and Smoke consume the same remote revision with no
+local overrides. pi-ai-swift remains remote `main` revision
+`44c079d92d6ffbcdfbef73019664d04f1ce93269`.
+
+The policy is now a struct with static values and supports Observation. Revert
+removes only the failed request's entries, preserving overlapping requests.
+`waitForResponseCompletion()` waits for every streaming relay registered when
+called; later requests and nonstreaming operations must be awaited separately.
+Built-in adapters omit unsupported reasoning from provider requests while keeping
+the transcript for display. Anthropic retains native signature validation.
+Core's pi-ai adapter continues to own its provider DTO mapping.
 
 Core creates stable reasoning entry IDs, preserves opaque signatures and provider
 metadata through Codable transcript replay, and keeps redacted data out of display
@@ -59,6 +67,13 @@ lint, whitespace checks, and the Core generic iOS Simulator build passed against
 that remote graph. Smoke consumes the same two revisions. Logs are
 `/tmp/core-transcript-publish-tests.log`, `/tmp/core-transcript-publish-ios.log`
 and `/tmp/core-transcript-publish-smoke.log`. No live provider call was made.
+
+Published refactor acceptance on 2026-09-26: the combined fork passed 763 offline
+tests including MLX/Llama/CoreML traits and an iOS Simulator build. Core's normal
+remote graph passed 47 tests, format lint, whitespace checks, and Core/Smoke iOS
+Simulator builds. Both lockfiles resolve `4d088af` with pi-ai-swift `44c079d`.
+Evidence: `/tmp/aml-release14-tests.log`, `/tmp/core-release14-tests.log`,
+`/tmp/core-release14-ios.log`, `/tmp/core-release14-smoke.log`.
 
 ## AnyLanguageModel contract-only product
 
