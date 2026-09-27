@@ -76,6 +76,21 @@ interface around it. Model and Tools are peer dependencies of
   is awaited before the next provider event is consumed. Its error is propagated
   without retry, deduplication, or rollback. Storage, presentation and retention
   belong to the Host. Without a callback, the first asset fails explicitly.
+- Provider usage is projected onto the Foundation Models 27-shaped
+  `LanguageModelSession.Usage`. Apple's input total includes every transcript
+  input token, whereas pi-ai-swift exposes provider-normalized input, cache-read
+  and cache-write details. Core therefore derives Apple's inclusive input count
+  from reported total minus output, falling back to the sum of the three input
+  buckets when a total is absent; cache-read tokens also populate
+  `cachedTokenCount`. Output and reasoning counts map directly to their
+  corresponding fields.
+  Provider updates within one request are cumulative snapshots, while separate
+  provider requests made for Tool rounds are added into one logical response.
+  Streaming snapshots therefore carry cumulative response usage.
+  AnyLanguageModel owns session-lifetime accumulation; Core does not maintain a
+  second session counter. Provider-only cost, reported-total and raw metadata
+  fields remain at the provider seam until a consumer demonstrates a stable
+  metadata contract.
 - AnyLanguageModel currently creates response transcript entries with empty
   asset IDs. Core therefore does not invent an asset reference or persistence
   layer; asset-only responses remain unrepresentable until the upstream contract
@@ -87,6 +102,12 @@ Conversation persistence and external capabilities are outside this package.
 The Host composes any browser, filesystem, HTTP, shell, MCP, or other capability
 as an `AnyLanguageModel.Tool` alongside `PiAILanguageModel`. Tests use a minimal
 deterministic Tool only to verify the provider continuation loop.
+
+Model context capacity is also Host configuration, not a
+`LanguageModelSession` property. A Host may resolve an optional capacity from a
+provider catalog or a concrete Apple model and pass it to its context-management
+layer. Session-lifetime usage is accounting history, not the current transcript's
+context occupancy, and must not be used directly as a compaction-pressure ratio.
 
 ## Explicit failures
 

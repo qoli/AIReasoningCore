@@ -81,6 +81,7 @@ public struct PiAILanguageModel: LanguageModel {
       custom: providerOptions
     )
     var transcriptEntries: [Transcript.Entry] = []
+    var usage = ProviderMapper.zeroUsage
 
     var toolIterations = 0
     while true {
@@ -93,6 +94,7 @@ public struct PiAILanguageModel: LanguageModel {
         options: generationOptions
       )
       let result = try await collect(runtime.stream(request))
+      ProviderMapper.accumulate(result.usage, into: &usage)
 
       if !result.toolCalls.isEmpty {
         guard toolIterations < providerOptions.maximumToolIterations else {
@@ -112,7 +114,8 @@ public struct PiAILanguageModel: LanguageModel {
           return LanguageModelSession.Response(
             content: empty.content,
             rawContent: empty.raw,
-            transcriptEntries: ArraySlice(transcriptEntries)
+            transcriptEntries: ArraySlice(transcriptEntries),
+            usage: usage
           )
         }
         transcriptEntries.append(contentsOf: resolution.outputs.map(Transcript.Entry.toolOutput))
@@ -132,7 +135,8 @@ public struct PiAILanguageModel: LanguageModel {
       return LanguageModelSession.Response(
         content: try ProviderMapper.content(type, from: raw),
         rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries)
+        transcriptEntries: ArraySlice(transcriptEntries),
+        usage: usage
       )
     }
   }
@@ -162,6 +166,7 @@ public struct PiAILanguageModel: LanguageModel {
           let generationOptions = try ProviderMapper.options(
             for: type, options: options, custom: custom)
           var transcriptEntries: [Transcript.Entry] = []
+          var completedUsage = ProviderMapper.zeroUsage
           var toolIterations = 0
           while true {
             try Task.checkCancellation()
@@ -174,17 +179,27 @@ public struct PiAILanguageModel: LanguageModel {
               options: generationOptions
             )
             var lastSnapshot: LanguageModelSession.ResponseStream<Content>.Snapshot?
-            func emit(_ text: String, entries: [Transcript.Entry]) throws {
+            func emit(
+              _ text: String,
+              entries: [Transcript.Entry],
+              usage: LanguageModelSession.Usage
+            ) throws {
               if let snapshot = try ProviderMapper.snapshot(
-                text, for: type, transcriptEntries: entries)
+                text, for: type, transcriptEntries: entries, usage: usage)
               {
                 continuation.yield(snapshot)
                 lastSnapshot = snapshot
               }
             }
-            let result = try await collect(runtime.stream(request)) { text, reasoningEntries in
-              try emit(text, entries: transcriptEntries + reasoningEntries)
+            let result = try await collect(runtime.stream(request)) {
+              text, reasoningEntries, roundUsage in
+              try emit(
+                text,
+                entries: transcriptEntries + reasoningEntries,
+                usage: ProviderMapper.adding(roundUsage, to: completedUsage)
+              )
             }
+            ProviderMapper.accumulate(result.usage, into: &completedUsage)
             if !result.toolCalls.isEmpty {
               guard toolIterations < custom.maximumToolIterations else {
                 throw AIReasoningCoreError(
@@ -194,10 +209,10 @@ public struct PiAILanguageModel: LanguageModel {
               }
               toolIterations += 1
               transcriptEntries.append(contentsOf: result.entries)
-              try emit("", entries: transcriptEntries)
+              try emit("", entries: transcriptEntries, usage: completedUsage)
               let resolution = try await resolve(result.toolCalls, in: session) { output in
                 transcriptEntries.append(.toolOutput(output))
-                try emit("", entries: transcriptEntries)
+                try emit("", entries: transcriptEntries, usage: completedUsage)
               }
               try Task.checkCancellation()
               if resolution.stopped { break }
@@ -215,8 +230,10 @@ public struct PiAILanguageModel: LanguageModel {
             _ = try ProviderMapper.content(type, from: raw)
             transcriptEntries.append(contentsOf: result.reasoningEntries)
             // Terminal signatures/metadata can complete a reasoning entry without new answer text.
-            if lastSnapshot.map({ Array($0.transcriptEntries) }) != transcriptEntries {
-              try emit(result.text, entries: transcriptEntries)
+            if lastSnapshot.map({ Array($0.transcriptEntries) }) != transcriptEntries
+              || lastSnapshot?.usage != completedUsage
+            {
+              try emit(result.text, entries: transcriptEntries, usage: completedUsage)
             }
             break
           }
@@ -232,7 +249,7 @@ public struct PiAILanguageModel: LanguageModel {
 
   private func collect(
     _ stream: AsyncThrowingStream<ProviderEvent, any Error>,
-    onUpdate: ((String, [Transcript.Entry]) throws -> Void)? = nil
+    onUpdate: ((String, [Transcript.Entry], LanguageModelSession.Usage) throws -> Void)? = nil
   ) async throws -> CollectedResponse {
     var text = ""
     let roundID = UUID().uuidString
@@ -243,6 +260,7 @@ public struct PiAILanguageModel: LanguageModel {
     var completedCallIDs = Set<String>()
     var completed = false
     var started = false
+    var reportedUsage = ProviderUsageAccumulator()
     var finishReason: ProviderFinishReason?
     var terminalSnapshot: ProviderResponseSnapshot?
     for try await event in stream {
@@ -286,7 +304,11 @@ public struct PiAILanguageModel: LanguageModel {
           content.append(.text(delta))
         }
         reasoningIndex = nil
-        try onUpdate?(text, ProviderMapper.reasoningEntries(from: content, roundID: roundID))
+        try onUpdate?(
+          text,
+          ProviderMapper.reasoningEntries(from: content, roundID: roundID),
+          reportedUsage.value
+        )
       case .toolCallStarted(let id, let name):
         guard openCalls[id] == nil, !completedCallIDs.contains(id) else {
           throw AIReasoningCoreError(
@@ -336,15 +358,29 @@ public struct PiAILanguageModel: LanguageModel {
           reasoningIndex = content.count
           content.append(.reasoning(.init(text: delta, signature: nil, providerMetadata: [:])))
         }
-        try onUpdate?(text, ProviderMapper.reasoningEntries(from: content, roundID: roundID))
+        try onUpdate?(
+          text,
+          ProviderMapper.reasoningEntries(from: content, roundID: roundID),
+          reportedUsage.value
+        )
       case .reasoningSignatureDelta:
         // Provider signatures are opaque: only the authoritative terminal content is replayable.
         // Some protocols emit fragments, others emit a replacement token; never concatenate here.
         break
-      case .usage:
-        break
+      case .usage(let update):
+        let previous = reportedUsage.value
+        reportedUsage.merge(update)
+        let current = reportedUsage.value
+        if current != previous {
+          try onUpdate?(
+            text,
+            ProviderMapper.reasoningEntries(from: content, roundID: roundID),
+            current
+          )
+        }
       case .responseSnapshot(let snapshot):
         try validate(snapshot)
+        reportedUsage.merge(snapshot.usage)
         terminalSnapshot = snapshot
       case .completed(let reason):
         try ProviderMapper.validateFinish(reason)
@@ -416,7 +452,8 @@ public struct PiAILanguageModel: LanguageModel {
       entries: try ProviderMapper.entries(from: terminalContent, roundID: roundID),
       reasoningEntries: try ProviderMapper.reasoningEntries(
         from: terminalContent, roundID: roundID),
-      assistantMessage: assistantMessage
+      assistantMessage: assistantMessage,
+      usage: reportedUsage.value
     )
   }
 
@@ -561,12 +598,60 @@ public struct PiAILanguageModel: LanguageModel {
   }
 }
 
+private struct ProviderUsageAccumulator: Sendable {
+  private var inputTokens: Int?
+  private var outputTokens: Int?
+  private var reasoningTokens: Int?
+  private var cachedInputTokens: Int?
+  private var cacheWriteTokens: Int?
+  private var totalTokens: Int?
+
+  mutating func merge(_ update: ProviderUsage?) {
+    guard let update else { return }
+    let updatesComponent =
+      update.inputTokens != nil || update.outputTokens != nil || update.reasoningTokens != nil
+      || update.cachedInputTokens != nil || update.cacheWriteTokens != nil
+    if let value = update.inputTokens { inputTokens = value }
+    if let value = update.outputTokens { outputTokens = value }
+    if let value = update.reasoningTokens { reasoningTokens = value }
+    if let value = update.cachedInputTokens { cachedInputTokens = value }
+    if let value = update.cacheWriteTokens { cacheWriteTokens = value }
+    if let value = update.totalTokens {
+      totalTokens = value
+    } else if updatesComponent {
+      totalTokens = nil
+    }
+  }
+
+  var value: LanguageModelSession.Usage {
+    // Foundation Models defines input total as every transcript input token. pi-ai-swift's
+    // provider-normalized input/cache buckets are not uniformly inclusive across protocols.
+    let inputTotal: Int
+    if let totalTokens, let outputTokens, totalTokens >= outputTokens {
+      inputTotal = totalTokens - outputTokens
+    } else {
+      inputTotal = (inputTokens ?? 0) + (cachedInputTokens ?? 0) + (cacheWriteTokens ?? 0)
+    }
+    return .init(
+      input: .init(
+        totalTokenCount: inputTotal,
+        cachedTokenCount: cachedInputTokens ?? 0
+      ),
+      output: .init(
+        totalTokenCount: outputTokens ?? 0,
+        reasoningTokenCount: reasoningTokens ?? 0
+      )
+    )
+  }
+}
+
 private struct CollectedResponse: Sendable {
   let text: String
   let toolCalls: [ProviderToolCall]
   let entries: [Transcript.Entry]
   let reasoningEntries: [Transcript.Entry]
   let assistantMessage: ProviderAssistantMessage?
+  let usage: LanguageModelSession.Usage
 }
 
 private struct ToolResolution: Sendable {
@@ -575,6 +660,33 @@ private struct ToolResolution: Sendable {
 }
 
 private enum ProviderMapper {
+  static var zeroUsage: LanguageModelSession.Usage {
+    .init(
+      input: .init(totalTokenCount: 0, cachedTokenCount: 0),
+      output: .init(totalTokenCount: 0, reasoningTokenCount: 0)
+    )
+  }
+
+  static func accumulate(
+    _ usage: LanguageModelSession.Usage,
+    into total: inout LanguageModelSession.Usage
+  ) {
+    total.input.totalTokenCount += usage.input.totalTokenCount
+    total.input.cachedTokenCount += usage.input.cachedTokenCount
+    total.output.totalTokenCount += usage.output.totalTokenCount
+    total.output.reasoningTokenCount += usage.output.reasoningTokenCount
+    total.metadata.merge(usage.metadata) { _, latest in latest }
+  }
+
+  static func adding(
+    _ usage: LanguageModelSession.Usage,
+    to total: LanguageModelSession.Usage
+  ) -> LanguageModelSession.Usage {
+    var combined = total
+    accumulate(usage, into: &combined)
+    return combined
+  }
+
   static func messages(from transcript: Transcript) throws -> [ProviderMessage] {
     var messages: [ProviderMessage] = []
     for entry in transcript {
@@ -811,22 +923,21 @@ private enum ProviderMapper {
   static func snapshot<Content: Generable>(
     _ text: String,
     for type: Content.Type,
-    transcriptEntries: [Transcript.Entry] = []
+    transcriptEntries: [Transcript.Entry] = [],
+    usage: LanguageModelSession.Usage
   ) throws -> LanguageModelSession.ResponseStream<Content>.Snapshot? {
     if type == String.self {
       let raw = GeneratedContent(text)
       return .init(
         content: (text as! Content).asPartiallyGenerated(), rawContent: raw,
-        transcriptEntries: ArraySlice(transcriptEntries)
+        transcriptEntries: ArraySlice(transcriptEntries), usage: usage
       )
     }
     let raw: GeneratedContent
     do {
-      // An empty object represents not-yet-generated fields, not reasoning JSON.
-      raw =
-        text.isEmpty
-          && transcriptEntries.contains { if case .reasoning = $0 { true } else { false } }
-        ? GeneratedContent(properties: [:]) : try GeneratedContent(json: text)
+      // An empty object represents not-yet-generated fields for usage, reasoning, or Tool
+      // checkpoints. Scalar partial types defer the snapshot below until content is representable.
+      raw = text.isEmpty ? GeneratedContent(properties: [:]) : try GeneratedContent(json: text)
     } catch {
       throw AIReasoningCoreError(
         .invalidStructuredOutput,
@@ -835,7 +946,8 @@ private enum ProviderMapper {
     }
     guard let partial = try? partiallyGenerated(type, from: raw) else { return nil }
     return .init(
-      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries)
+      content: partial, rawContent: raw, transcriptEntries: ArraySlice(transcriptEntries),
+      usage: usage
     )
   }
 

@@ -3,6 +3,27 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## Foundation Models 27 authority snapshot (2026-09-27)
+
+The installed Xcode 27.0 (`27A266a`) macOS 27 SDK exposes FoundationModels module
+`2.0.68.1.402`. Its `LanguageModelSession` contract includes response, streaming
+snapshot and monotonically accumulated session usage. Input totals include every
+transcript input token, with cached tokens as a subset; output totals likewise
+include reasoning tokens as a subset. `SystemLanguageModel.contextSize` remains a
+concrete-model capability rather than a session property. AIReasoningCore's
+provider mapping and Host context-budget boundary follow those semantics.
+
+Apple's [online Foundation Models documentation](https://developer.apple.com/documentation/updates/foundationmodels)
+updated 2026-09-14 and the 2026-09-21
+[`apple/foundation-models-utilities`](https://github.com/apple/foundation-models-utilities)
+provider guidance are newer than the installed SDK interface. They additionally
+describe `DataEntry`, generation channel data events, and
+`LanguageModel.supportsDataAttachmentType(_:)` /
+`supportsDataEntryType(_:)`. Those APIs are absent from the installed Xcode 27.0
+module and are not claimed as locally compiled compatibility. Track them as a
+required parity gate when a newer SDK becomes available; do not freeze the
+current copied transcript/event shape as exhaustive.
+
 ## Transcript reasoning (maintained fork)
 
 The working implementation replaces the prototype `Response.reasoning` and

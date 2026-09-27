@@ -204,23 +204,115 @@ final class PiAILanguageModelTests: XCTestCase {
   }
 
   func testUsageAndOpaqueReasoningDoNotInventDisplayText() async throws {
+    let usage = providerUsage(input: 1, output: 4, reasoning: 3, cachedInput: 0)
     let runtime = FakeRuntime { request in
-      var terminal = responseEvents(for: request, text: "answer")
-      terminal.insert(
-        contentsOf: [
-          .reasoningSignatureDelta("opaque"),
-          .usage(
-            .init(
-              inputTokens: 1, outputTokens: 4, reasoningTokens: 3, cachedInputTokens: 0,
-              totalTokens: 5, providerMetadata: [:])),
-        ], at: 1)
-      return terminal
+      [
+        .responseStarted(metadata(for: request)),
+        .reasoningSignatureDelta("opaque"),
+        .usage(usage),
+        .textDelta("answer"),
+        .responseSnapshot(
+          responseSnapshot(
+            for: request, content: [.text("answer")], finishReason: .stop, usage: usage)),
+        .completed(.stop),
+      ]
     }
     let model = PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
     let response = try await LanguageModelSession(model: model).streamResponse(to: "Answer")
       .collect()
     XCTAssertNil(visibleReasoning(response.transcriptEntries))
     XCTAssertEqual(response.content, "answer")
+  }
+
+  func testProviderUsageMapsAndAccumulatesAcrossToolRoundsInBothModes() async throws {
+    let call = ProviderToolCall(
+      id: "usage-call", name: "echo", arguments: .object(["value": .string("done")]))
+    let firstUsage = providerUsage(
+      input: 10, output: 3, reasoning: 2, cachedInput: 4, cacheWrite: 2)
+    let secondInputUsage = providerUsage(
+      input: 20, output: nil, reasoning: nil, cachedInput: 6, cacheWrite: 3)
+    let secondUsage = providerUsage(
+      input: 20, output: 7, reasoning: 5, cachedInput: 6, cacheWrite: 3)
+    let expected = LanguageModelSession.Usage(
+      input: .init(totalTokenCount: 45, cachedTokenCount: 10),
+      output: .init(totalTokenCount: 10, reasoningTokenCount: 7)
+    )
+    let secondResponseExpected = LanguageModelSession.Usage(
+      input: .init(totalTokenCount: 29, cachedTokenCount: 6),
+      output: .init(totalTokenCount: 7, reasoningTokenCount: 5)
+    )
+    let sessionExpected = LanguageModelSession.Usage(
+      input: .init(totalTokenCount: 74, cachedTokenCount: 16),
+      output: .init(totalTokenCount: 17, reasoningTokenCount: 12)
+    )
+
+    for streaming in [false, true] {
+      let runtime = FakeRuntime { request in
+        if request.messages.contains(where: { if case .toolResult = $0 { true } else { false } }) {
+          return [
+            .responseStarted(metadata(for: request)),
+            .usage(secondInputUsage),
+            .textDelta("complete"),
+            .usage(secondUsage),
+            .responseSnapshot(
+              responseSnapshot(
+                for: request, content: [.text("complete")], finishReason: .stop,
+                usage: secondUsage)),
+            .completed(.stop),
+          ]
+        }
+        return [
+          .responseStarted(metadata(for: request)),
+          .usage(firstUsage),
+          .toolCallStarted(id: call.id, name: call.name),
+          .toolCallCompleted(call),
+          .responseSnapshot(
+            responseSnapshot(
+              for: request, content: [.toolCall(call)], finishReason: .toolCalls,
+              usage: firstUsage)),
+          .completed(.toolCalls),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        tools: [EchoTool()]
+      )
+
+      let content: String
+      let responseUsage: LanguageModelSession.Usage
+      if streaming {
+        var snapshots: [LanguageModelSession.ResponseStream<String>.Snapshot] = []
+        for try await snapshot in session.streamResponse(to: "Use echo") {
+          snapshots.append(snapshot)
+        }
+        let last = try XCTUnwrap(snapshots.last)
+        content = last.content
+        responseUsage = last.usage
+        XCTAssertTrue(
+          snapshots.contains {
+            $0.usage.input.totalTokenCount == 16 && $0.usage.output.totalTokenCount == 3
+          })
+        for (previous, current) in zip(snapshots, snapshots.dropFirst()) {
+          XCTAssertLessThanOrEqual(
+            previous.usage.input.totalTokenCount, current.usage.input.totalTokenCount)
+          XCTAssertLessThanOrEqual(
+            previous.usage.output.totalTokenCount, current.usage.output.totalTokenCount)
+        }
+        XCTAssertEqual(snapshots.last?.usage, expected)
+      } else {
+        let response = try await session.respond(to: "Use echo")
+        content = response.content
+        responseUsage = response.usage
+      }
+
+      XCTAssertEqual(content, "complete")
+      XCTAssertEqual(responseUsage, expected)
+      XCTAssertEqual(session.usage, expected)
+
+      let nextResponse = try await session.respond(to: "Again")
+      XCTAssertEqual(nextResponse.usage, secondResponseExpected)
+      XCTAssertEqual(session.usage, sessionExpected)
+    }
   }
 
   func testReasoningDoesNotBypassTerminalValidation() async throws {
@@ -430,16 +522,19 @@ final class PiAILanguageModelTests: XCTestCase {
   }
 
   func testStructuredStreamingProducesRequestedType() async throws {
+    let usage = providerUsage(input: 8, output: 2, reasoning: 1, cachedInput: 3)
     let runtime = FakeRuntime { request in
       [
         .responseStarted(metadata(for: request)),
+        .usage(usage),
         .textDelta(#"{"answer":"ye"#),
         .textDelta(#"s"}"#),
         .responseSnapshot(
           responseSnapshot(
             for: request,
             content: [.text(#"{"answer":"yes"}"#)],
-            finishReason: .stop
+            finishReason: .stop,
+            usage: usage
           )),
         .completed(.stop),
       ]
@@ -449,13 +544,19 @@ final class PiAILanguageModelTests: XCTestCase {
     )
 
     var partialAnswers: [String?] = []
+    var usages: [LanguageModelSession.Usage] = []
     for try await snapshot in session.streamResponse(
       to: "Answer", generating: StructuredAnswer.self)
     {
       partialAnswers.append(snapshot.content.answer)
+      usages.append(snapshot.usage)
     }
 
     XCTAssertEqual(partialAnswers.last!, "yes")
+    XCTAssertEqual(usages.last?.input.totalTokenCount, 11)
+    XCTAssertEqual(usages.last?.input.cachedTokenCount, 3)
+    XCTAssertEqual(usages.last?.output.totalTokenCount, 2)
+    XCTAssertEqual(usages.last?.output.reasoningTokenCount, 1)
   }
 
   func testToolSchemaMaterializesRootAndPreservesNestedDefinitions() async throws {
@@ -1347,7 +1448,8 @@ private func responseEvents(for request: ProviderRequest, text: String) -> [Prov
 private func responseSnapshot(
   for request: ProviderRequest,
   content: [ProviderAssistantContent],
-  finishReason: ProviderFinishReason
+  finishReason: ProviderFinishReason,
+  usage: ProviderUsage? = providerUsage()
 ) -> ProviderResponseSnapshot {
   ProviderResponseSnapshot(
     responseID: "response",
@@ -1367,17 +1469,28 @@ private func responseSnapshot(
         return .toolCall(call)
       }
     },
-    usage: ProviderUsage(
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cachedInputTokens: 0,
-      totalTokens: 0,
-      providerMetadata: [:]
-    ),
+    usage: usage,
     finishReason: finishReason,
     rawFinishReason: finishReason.rawValue,
     timestampMilliseconds: 0
+  )
+}
+
+private func providerUsage(
+  input: Int? = 0,
+  output: Int? = 0,
+  reasoning: Int? = 0,
+  cachedInput: Int? = 0,
+  cacheWrite: Int? = 0
+) -> ProviderUsage {
+  ProviderUsage(
+    inputTokens: input,
+    outputTokens: output,
+    reasoningTokens: reasoning,
+    cachedInputTokens: cachedInput,
+    cacheWriteTokens: cacheWrite,
+    totalTokens: (input ?? 0) + (cachedInput ?? 0) + (cacheWrite ?? 0) + (output ?? 0),
+    providerMetadata: [:]
   )
 }
 
