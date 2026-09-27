@@ -13,10 +13,14 @@ restored. This follows the direction requested in
 [upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264#issuecomment-5819322352).
 
 The maintained `qoli/AnyLanguageModel/main` publishes the reviewed reasoning and
-cancellation refactors at `4d088af3331dc58ca68c8587c3bc84f205c7ec76` (2026-09-26),
-replacing `78498ee`. Core and Smoke consume the same remote revision with no
+cancellation refactors, including empty-stream failure handling, at
+`ab351e7c888860dc96dd00423cd5b2eb9c285a4e` (2026-09-27), replacing `4d088af`. Core and Smoke consume the same remote revision with no
 local overrides. pi-ai-swift remains remote `main` revision
 `44c079d92d6ffbcdfbef73019664d04f1ce93269`.
+
+An upstream stream that produces no snapshot now throws `noSnapshots` inside the
+session relay, so the configured transcript policy runs before either direct
+iteration or `collect()` reports the error.
 
 The policy is now a struct with static values and supports Observation. Revert
 removes only the failed request's entries, preserving overlapping requests.
@@ -74,6 +78,14 @@ remote graph passed 47 tests, format lint, whitespace checks, and Core/Smoke iOS
 Simulator builds. Both lockfiles resolve `4d088af` with pi-ai-swift `44c079d`.
 Evidence: `/tmp/aml-release14-tests.log`, `/tmp/core-release14-tests.log`,
 `/tmp/core-release14-ios.log`, `/tmp/core-release14-smoke.log`.
+
+Empty-stream pin acceptance on 2026-09-27: the maintained fork `ab351e7` passed
+609 offline tests and its iOS Simulator build. After adopting that published
+revision, the refocused Core passed 36 tests, recursive format lint, whitespace
+checks, and Core/Smoke generic iOS Simulator builds. pi-ai-swift remains the
+current remote `main` revision `44c079d`. Evidence:
+`/tmp/aml-empty-pin-tests.log`, `/tmp/core-empty-pin-tests.log`,
+`/tmp/core-empty-pin-ios.log`, `/tmp/core-empty-pin-smoke.log`.
 
 ## AnyLanguageModel contract-only product
 
