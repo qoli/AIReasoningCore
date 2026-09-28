@@ -33,6 +33,13 @@ interface around it. Model and Tools are peer dependencies of
   tool signature. It does not claim all providers preserve nested references.
 - Non-streaming provider tool calls are executed through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
+  Immediately before every provider request, including a continuation after a
+  tool round, Core resolves AnyLanguageModel's immutable request context. The
+  context supplies that request's transient instructions, transcript view and
+  Tool instances. Calls emitted by the request execute against those exact Tool
+  instances; only the following provider request resolves the dynamic body
+  again. In-flight assistant replay and tool outputs are appended to the newly
+  resolved transcript view without persisting dynamic instructions as history.
   Mixed text/tool turns retain content order, including text between tool calls.
   They are persisted as adjacent response/toolCalls entries; replay combines
   adjacent assistant entries into one provider message, ending at a prompt,

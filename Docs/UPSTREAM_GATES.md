@@ -24,6 +24,28 @@ module and are not claimed as locally compiled compatibility. Track them as a
 required parity gate when a newer SDK becomes available; do not freeze the
 current copied transcript/event shape as exhaustive.
 
+## Dynamic instructions
+
+Foundation Models 27 adds `DynamicInstructions` and
+`LanguageModelSession.init(model:dynamicInstructions:history:)`. Apple evaluates
+the dynamic body before every model request so each request sees the current
+instructions and tools. The initializer's history excludes initial instructions;
+dynamic instructions remain request context rather than durable history.
+
+The maintained AnyLanguageModel implementation mirrors the Apple builder,
+composition and initializer surface and exposes an immutable provider-facing
+request context. `PiAILanguageModel` resolves that context inside each provider
+request loop, preserves current-response tool history separately, executes calls
+against the Tool snapshot that produced them, and resolves again only before the
+continuation request. DynamicInstructions remains an AnyLanguageModel/session
+concern and is not projected into pi-ai-swift DTOs.
+
+The contract is published on `qoli/AnyLanguageModel/main` at
+`fde42a49121c452115b3e655852f0501b77dd9dd` (2026-09-28). Core's package and
+Smoke lockfiles resolve that exact remote revision. The full Core test suite and
+iOS Simulator build pass without a sibling package override, so this is no
+longer an upstream distribution gate.
+
 ## Transcript reasoning (maintained fork)
 
 The working implementation replaces the prototype `Response.reasoning` and
@@ -33,10 +55,11 @@ carry reasoning via `transcriptEntries`; existing initializer selectors are
 restored. This follows the direction requested in
 [upstream PR #264](https://github.com/huggingface/AnyLanguageModel/pull/264#issuecomment-5819322352).
 
-The maintained `qoli/AnyLanguageModel/main` publishes the reviewed reasoning and
-cancellation refactors, including empty-stream failure handling, at
-`ab351e7c888860dc96dd00423cd5b2eb9c285a4e` (2026-09-27), replacing `4d088af`. Core and Smoke consume the same remote revision with no
-local overrides. pi-ai-swift remains remote `main` revision
+The maintained `qoli/AnyLanguageModel/main` includes the reviewed reasoning and
+cancellation refactors, including empty-stream failure handling, at current
+revision `fde42a49121c452115b3e655852f0501b77dd9dd` (2026-09-28). Core and
+Smoke consume the same remote revision with no local overrides. pi-ai-swift
+remains remote `main` revision
 `44c079d92d6ffbcdfbef73019664d04f1ce93269`.
 
 An upstream stream that produces no snapshot now throws `noSnapshots` inside the

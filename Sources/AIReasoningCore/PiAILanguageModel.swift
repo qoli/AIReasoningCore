@@ -66,8 +66,6 @@ public struct PiAILanguageModel: LanguageModel {
     includeSchemaInPrompt: Bool,
     options: GenerationOptions
   ) async throws -> LanguageModelSession.Response<Content> where Content: Generable {
-    var messages = try ProviderMapper.messages(from: session.transcript)
-    let tools = try ProviderMapper.tools(from: session.tools)
     let providerOptions = options[custom: Self.self] ?? CustomGenerationOptions()
     guard providerOptions.maximumToolIterations > 0 else {
       throw AIReasoningCoreError(
@@ -81,16 +79,20 @@ public struct PiAILanguageModel: LanguageModel {
       custom: providerOptions
     )
     var transcriptEntries: [Transcript.Entry] = []
+    var continuationMessages: [ProviderMessage] = []
     var usage = ProviderMapper.zeroUsage
 
     var toolIterations = 0
     while true {
+      let context = session.resolvedRequestContext()
+      let messages =
+        try ProviderMapper.messages(from: context.transcript) + continuationMessages
       let request = ProviderRequest(
         id: UUID().uuidString,
         providerID: providerID,
         modelID: modelID,
         messages: messages,
-        tools: tools,
+        tools: try ProviderMapper.tools(from: context.tools),
         options: generationOptions
       )
       let result = try await collect(runtime.stream(request))
@@ -106,7 +108,8 @@ public struct PiAILanguageModel: LanguageModel {
         toolIterations += 1
         let resolution = try await resolve(
           result.toolCalls,
-          in: session
+          in: session,
+          using: context.tools
         )
         transcriptEntries.append(contentsOf: result.entries)
         if resolution.stopped {
@@ -125,8 +128,9 @@ public struct PiAILanguageModel: LanguageModel {
             "provider tool response is missing replayable terminal state"
           )
         }
-        messages.append(.assistantMessage(assistantMessage))
-        messages.append(contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
+        continuationMessages.append(.assistantMessage(assistantMessage))
+        continuationMessages.append(
+          contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
         continue
       }
 
@@ -161,21 +165,23 @@ public struct PiAILanguageModel: LanguageModel {
               "maximumToolIterations must be greater than zero"
             )
           }
-          var messages = try ProviderMapper.messages(from: session.transcript)
-          let tools = try ProviderMapper.tools(from: session.tools)
           let generationOptions = try ProviderMapper.options(
             for: type, options: options, custom: custom)
           var transcriptEntries: [Transcript.Entry] = []
+          var continuationMessages: [ProviderMessage] = []
           var completedUsage = ProviderMapper.zeroUsage
           var toolIterations = 0
           while true {
             try Task.checkCancellation()
+            let context = session.resolvedRequestContext()
+            let messages =
+              try ProviderMapper.messages(from: context.transcript) + continuationMessages
             let request = ProviderRequest(
               id: UUID().uuidString,
               providerID: providerID,
               modelID: modelID,
               messages: messages,
-              tools: tools,
+              tools: try ProviderMapper.tools(from: context.tools),
               options: generationOptions
             )
             var lastSnapshot: LanguageModelSession.ResponseStream<Content>.Snapshot?
@@ -210,7 +216,11 @@ public struct PiAILanguageModel: LanguageModel {
               toolIterations += 1
               transcriptEntries.append(contentsOf: result.entries)
               try emit("", entries: transcriptEntries, usage: completedUsage)
-              let resolution = try await resolve(result.toolCalls, in: session) { output in
+              let resolution = try await resolve(
+                result.toolCalls,
+                in: session,
+                using: context.tools
+              ) { output in
                 transcriptEntries.append(.toolOutput(output))
                 try emit("", entries: transcriptEntries, usage: completedUsage)
               }
@@ -222,8 +232,9 @@ public struct PiAILanguageModel: LanguageModel {
                   "provider tool response is missing replayable terminal state"
                 )
               }
-              messages.append(.assistantMessage(assistantMessage))
-              messages.append(contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
+              continuationMessages.append(.assistantMessage(assistantMessage))
+              continuationMessages.append(
+                contentsOf: try resolution.outputs.map(ProviderMapper.toolResult))
               continue
             }
             let raw = try ProviderMapper.generatedContent(result.text, for: type)
@@ -506,6 +517,7 @@ public struct PiAILanguageModel: LanguageModel {
   private func resolve(
     _ calls: [ProviderToolCall],
     in session: LanguageModelSession,
+    using tools: [any Tool],
     onOutput: ((Transcript.ToolOutput) throws -> Void)? = nil
   ) async throws -> ToolResolution {
     let transcriptCalls = try calls.map(ProviderMapper.transcriptToolCall)
@@ -545,7 +557,7 @@ public struct PiAILanguageModel: LanguageModel {
           await delegate.didExecuteToolCall(call, output: output, in: session)
         }
       case .execute:
-        guard let tool = session.tools.first(where: { $0.name == call.toolName }) else {
+        guard let tool = tools.first(where: { $0.name == call.toolName }) else {
           throw AIReasoningCoreError(.unknownTool, "unknown tool: \(call.toolName)")
         }
         do {

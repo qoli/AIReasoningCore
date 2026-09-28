@@ -646,6 +646,141 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(output.toolName, "echo")
   }
 
+  func testDynamicInstructionsRefreshRequestsButToolCallsUseProducingContext() async throws {
+    let firstCall = ProviderToolCall(
+      id: "request-a-call-1",
+      name: "tool-a",
+      arguments: .object(["value": .string("first")])
+    )
+    let secondCall = ProviderToolCall(
+      id: "request-a-call-2",
+      name: "tool-a-secondary",
+      arguments: .object(["value": .string("second")])
+    )
+    let thirdCall = ProviderToolCall(
+      id: "request-b-call-1",
+      name: "tool-b",
+      arguments: .object(["value": .string("third")])
+    )
+
+    for streaming in [false, true] {
+      let state = DynamicProviderState()
+      let runtime = FakeRuntime { request in
+        let toolResults = request.messages.compactMap { message -> ProviderToolResult? in
+          guard case .toolResult(let result) = message else { return nil }
+          return result
+        }
+        if toolResults.count == 3 {
+          XCTAssertEqual(request.tools.map(\.name), ["tool-c"])
+          XCTAssertEqual(request.messages.count, 7)
+          guard case .system(let instructions) = request.messages[0],
+            case .user = request.messages[1],
+            case .assistantMessage(let firstAssistant) = request.messages[2],
+            case .toolResult(let firstOutput) = request.messages[3],
+            case .toolResult(let secondOutput) = request.messages[4],
+            case .assistantMessage(let secondAssistant) = request.messages[5],
+            case .toolResult(let thirdOutput) = request.messages[6]
+          else { throw TestFailure.invalidDynamicRequest }
+          XCTAssertEqual(instructions, "Instructions C")
+          XCTAssertEqual(firstAssistant.content, [.toolCall(firstCall), .toolCall(secondCall)])
+          XCTAssertEqual(firstOutput.toolCallID, firstCall.id)
+          XCTAssertEqual(secondOutput.toolCallID, secondCall.id)
+          XCTAssertEqual(secondAssistant.content, [.toolCall(thirdCall)])
+          XCTAssertEqual(thirdOutput.toolCallID, thirdCall.id)
+          XCTAssertEqual(thirdOutput.toolName, thirdCall.name)
+          XCTAssertEqual(thirdOutput.content, [.text("\"tool-b:third\"")])
+          return responseEvents(for: request, text: "done")
+        }
+
+        if toolResults.count == 2 {
+          XCTAssertEqual(request.tools.map(\.name), ["tool-b"])
+          XCTAssertEqual(request.messages.count, 5)
+          guard case .system(let instructions) = request.messages[0],
+            case .user = request.messages[1],
+            case .assistantMessage(let assistant) = request.messages[2],
+            case .toolResult(let firstOutput) = request.messages[3],
+            case .toolResult(let secondOutput) = request.messages[4]
+          else { throw TestFailure.invalidDynamicRequest }
+          XCTAssertEqual(instructions, "Instructions B")
+          XCTAssertEqual(assistant.content, [.toolCall(firstCall), .toolCall(secondCall)])
+          XCTAssertEqual(firstOutput.toolCallID, firstCall.id)
+          XCTAssertEqual(firstOutput.toolName, firstCall.name)
+          XCTAssertEqual(firstOutput.content, [.text("\"tool-a:first\"")])
+          XCTAssertEqual(secondOutput.toolCallID, secondCall.id)
+          XCTAssertEqual(secondOutput.toolName, secondCall.name)
+          XCTAssertEqual(secondOutput.content, [.text("\"tool-a-secondary:second\"")])
+          state.selectC()
+          return [
+            .responseStarted(metadata(for: request)),
+            .toolCallStarted(id: thirdCall.id, name: thirdCall.name),
+            .toolCallCompleted(thirdCall),
+            .responseSnapshot(
+              responseSnapshot(
+                for: request,
+                content: [.toolCall(thirdCall)],
+                finishReason: .toolCalls
+              )),
+            .completed(.toolCalls),
+          ]
+        }
+
+        XCTAssertTrue(toolResults.isEmpty)
+        XCTAssertEqual(request.tools.map(\.name), ["tool-a", "tool-a-secondary"])
+        guard case .system(let instructions) = request.messages.first else {
+          throw TestFailure.invalidDynamicRequest
+        }
+        XCTAssertEqual(instructions, "Instructions A")
+        state.selectB()
+        return [
+          .responseStarted(metadata(for: request)),
+          .toolCallStarted(id: firstCall.id, name: firstCall.name),
+          .toolCallStarted(id: secondCall.id, name: secondCall.name),
+          .toolCallCompleted(secondCall),
+          .toolCallCompleted(firstCall),
+          .responseSnapshot(
+            responseSnapshot(
+              for: request,
+              content: [.toolCall(firstCall), .toolCall(secondCall)],
+              finishReason: .toolCalls
+            )),
+          .completed(.toolCalls),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        dynamicInstructions: DynamicProviderInstructions(state: state)
+      )
+
+      let response =
+        try await streaming
+        ? session.streamResponse(to: "Use current tools").collect()
+        : session.respond(to: "Use current tools")
+
+      XCTAssertEqual(response.content, "done")
+      XCTAssertEqual(state.evaluationCount, 3)
+      XCTAssertEqual(
+        state.executions,
+        ["tool-a:first", "tool-a-secondary:second", "tool-b:third"]
+      )
+      XCTAssertEqual(session.transcript.count, 7)
+      XCTAssertFalse(
+        session.transcript.contains { if case .instructions = $0 { true } else { false } })
+      guard case .prompt = session.transcript[0],
+        case .toolCalls(let firstCalls) = session.transcript[1],
+        case .toolOutput(let firstOutput) = session.transcript[2],
+        case .toolOutput(let secondOutput) = session.transcript[3],
+        case .toolCalls(let secondCalls) = session.transcript[4],
+        case .toolOutput(let thirdOutput) = session.transcript[5],
+        case .response = session.transcript[6]
+      else { return XCTFail("expected two ordered tool rounds followed by the response") }
+      XCTAssertEqual(firstCalls.map(\.id), [firstCall.id, secondCall.id])
+      XCTAssertEqual(firstOutput.id, firstCall.id)
+      XCTAssertEqual(secondOutput.id, secondCall.id)
+      XCTAssertEqual(secondCalls.map(\.id), [thirdCall.id])
+      XCTAssertEqual(thirdOutput.id, thirdCall.id)
+    }
+  }
+
   func testMixedAssistantTurnPreservesOrderThroughContinuationAndPersistedReplay() async throws {
     let firstCall = ProviderToolCall(
       id: "call-1",
@@ -809,6 +944,7 @@ final class PiAILanguageModelTests: XCTestCase {
   }
 
   private enum TestFailure: Error {
+    case invalidDynamicRequest
     case missingToolResults
     case missingReplayAssistantMessage
     case missingPersistedAssistantMessage
@@ -1348,6 +1484,106 @@ private struct SchemaTool: Tool {
   let parameters: GenerationSchema
 
   func call(arguments: GeneratedContent) async throws -> String { "unused" }
+}
+
+private struct DynamicProviderInstructions: DynamicInstructions {
+  let state: DynamicProviderState
+
+  var body: some DynamicInstructions {
+    let snapshot = state.snapshotForEvaluation()
+    Instructions(snapshot.instructions)
+    snapshot.tools
+  }
+}
+
+private final class DynamicProviderState: @unchecked Sendable {
+  private enum Phase: Sendable {
+    case a
+    case b
+    case c
+  }
+
+  struct Snapshot: Sendable {
+    let instructions: String
+    let tools: [any Tool]
+  }
+
+  private struct Storage {
+    var phase = Phase.a
+    var evaluationCount = 0
+    var executions: [String] = []
+  }
+
+  private let lock = NSLock()
+  private var storage = Storage()
+
+  var evaluationCount: Int {
+    withLock { $0.evaluationCount }
+  }
+
+  var executions: [String] {
+    withLock { $0.executions }
+  }
+
+  func selectB() {
+    withLock { $0.phase = .b }
+  }
+
+  func selectC() {
+    withLock { $0.phase = .c }
+  }
+
+  func snapshotForEvaluation() -> Snapshot {
+    withLock { storage in
+      storage.evaluationCount += 1
+      switch storage.phase {
+      case .a:
+        return Snapshot(
+          instructions: "Instructions A",
+          tools: [
+            DynamicRecordingTool(name: "tool-a", state: self),
+            DynamicRecordingTool(name: "tool-a-secondary", state: self),
+          ]
+        )
+      case .b:
+        return Snapshot(
+          instructions: "Instructions B",
+          tools: [DynamicRecordingTool(name: "tool-b", state: self)]
+        )
+      case .c:
+        return Snapshot(
+          instructions: "Instructions C",
+          tools: [DynamicRecordingTool(name: "tool-c", state: self)]
+        )
+      }
+    }
+  }
+
+  func record(tool: String, value: String) {
+    withLock { $0.executions.append("\(tool):\(value)") }
+  }
+
+  private func withLock<Result>(_ body: (inout Storage) -> Result) -> Result {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&storage)
+  }
+}
+
+private struct DynamicRecordingTool: Tool {
+  @Generable
+  struct Arguments {
+    let value: String
+  }
+
+  let name: String
+  let description = "Records the request-scoped tool instance that executes"
+  let state: DynamicProviderState
+
+  func call(arguments: Arguments) async throws -> String {
+    state.record(tool: name, value: arguments.value)
+    return "\(name):\(arguments.value)"
+  }
 }
 
 private struct FakeRuntime: ProviderRuntime {
