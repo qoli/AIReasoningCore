@@ -24,6 +24,31 @@ module and are not claimed as locally compiled compatibility. Track them as a
 required parity gate when a newer SDK becomes available; do not freeze the
 current copied transcript/event shape as exhaustive.
 
+## LanguageModelExecutor architecture
+
+Foundation Models 27 separates model configuration from execution through
+`LanguageModel.Executor` and `LanguageModelExecutor`. The executor receives a
+generation request and sends normalized events into a generation channel; the
+session owns the surrounding lifecycle.
+
+AnyLanguageModel still exposes the Foundation Models 26-style
+`LanguageModel.respond(within: LanguageModelSession, ...)` requirements. Its
+[2.0 roadmap](https://github.com/huggingface/AnyLanguageModel/issues/210) identifies
+Foundation Models 27 session construction as source-breaking work, but no published
+executor contract is available for Core to adopt. Core must not predict that public
+interface or create a parallel Session, Transcript, Tool, or Executor family.
+
+Until that gate closes, `SessionCompatibilityDriver` is the one explicit temporary
+owner of request-context resolution, Tool execution and continuation orchestration.
+The session-independent `PiAIProviderAdapter` owns the permanent provider request,
+event, replay, usage and asset mapping. Non-streaming and streaming responses share
+one compatibility state machine.
+
+Deletion gate: when AnyLanguageModel publishes an executor-style seam, Core must be
+able to remove `SessionCompatibilityDriver` and connect the new seam to
+`PiAIProviderAdapter` without changing the `ProviderRuntime` public seam or rewriting
+provider mapping. This gate does not block the current internal isolation.
+
 ## Dynamic instructions
 
 Foundation Models 27 adds `DynamicInstructions` and
@@ -34,10 +59,10 @@ dynamic instructions remain request context rather than durable history.
 
 The maintained AnyLanguageModel implementation mirrors the Apple builder,
 composition and initializer surface and exposes an immutable provider-facing
-request context. `PiAILanguageModel` resolves that context inside each provider
-request loop, preserves current-response tool history separately, executes calls
-against the Tool snapshot that produced them, and resolves again only before the
-continuation request. DynamicInstructions remains an AnyLanguageModel/session
+request context. `SessionCompatibilityDriver` resolves that context inside each
+provider request loop, preserves current-response tool history separately, executes
+calls against the Tool snapshot that produced them, and resolves again only before
+the continuation request. DynamicInstructions remains an AnyLanguageModel/session
 concern and is not projected into pi-ai-swift DTOs.
 
 The contract is published on `qoli/AnyLanguageModel/main` at

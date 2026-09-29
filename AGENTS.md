@@ -34,8 +34,15 @@ documentation in the same scoped change.
   exposed to callers.
 - `PiAILanguageModel` and translation between AnyLanguageModel transcript,
   prompt, tool, schema, and generation options and pi-ai-swift request DTOs.
-- Session orchestration, tool-call execution, tool-result transcript entries,
-  cancellation propagation, and caller-facing error translation.
+- While AnyLanguageModel retains its Foundation Models 26-style model interface,
+  `SessionCompatibilityDriver` is the sole transitional owner of session
+  orchestration, tool-call execution, tool-result transcript entries, cancellation
+  propagation, and the Tool-round policy. Do not duplicate that state machine or
+  extend it into a second public runtime contract.
+- `PiAIProviderAdapter` is the permanent session-independent adapter core for
+  provider request mapping, normalized event validation, replay state, usage and
+  asset translation. It must not receive or read a `LanguageModelSession`.
+- Caller-facing error translation.
 - Delivery of pi-ai-swift provider asset events through an injected callback.
 
 Host applications own conversation persistence, asset storage and presentation,
@@ -73,6 +80,10 @@ and coding environments.
 Do not silently work around an upstream contract limitation in AIReasoningCore
 or pi-ai-swift. Record the gate in `Docs/UPSTREAM_GATES.md` and make any local
 compatibility decision explicit and tested.
+
+Foundation Models 27's executor architecture is such a gate. When AnyLanguageModel
+publishes its executor-style contract, remove `SessionCompatibilityDriver` and
+reuse `PiAIProviderAdapter`; do not retain both orchestration paths.
 
 ## Choosing the Owning Repository
 

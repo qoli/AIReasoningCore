@@ -8,9 +8,11 @@ defines no parallel inference protocol, session type, transcript or tool system.
 ```text
 App
 └── LanguageModelSession
-    ├── PiAILanguageModel
-    │   ├── ProviderRuntime (pi-ai-swift)
-    │   └── optional provider asset callback
+    ├── PiAILanguageModel (thin conformance)
+    │   └── SessionCompatibilityDriver (transitional)
+    │       └── PiAIProviderAdapter (session-independent)
+    │           ├── ProviderRuntime (pi-ai-swift)
+    │           └── optional provider asset callback
     └── AnyLanguageModel.Tool (Host supplied)
 ```
 
@@ -21,17 +23,49 @@ interface around it. Model and Tools are peer dependencies of
 
 ## Ownership
 
-- `PiAILanguageModel` maps `Transcript`, tools, schemas and generation options to
+### Permanent Core responsibility
+
+- `PiAILanguageModel` is the thin public `LanguageModel` conformance. It delegates
+  the current session-shaped requirements without implementing provider mapping or
+  a second generation state machine.
+- `PiAIProviderAdapter` and `PiAIProviderMapper` map `Transcript`, tools, schemas and
+  generation options to
   pi-ai-swift DTOs, including output modality, reasoning effort, session and
   cache affinity, service tier, provider options, and native tool choice.
   Reasoning effort uses pi-ai-swift's `ProviderReasoningEffort`; model-specific
   choices and rejection of unsupported values are owned by that runtime.
+- The provider adapter consumes one already-resolved request at a time. It reduces
+  and validates provider events, preserves opaque assistant replay state, maps
+  reasoning and usage, and delivers asset events. It never receives or reads a
+  `LanguageModelSession`.
+
+### Current compatibility responsibility
+
+`SessionCompatibilityDriver` is the single transitional implementation of behavior
+forced into a model adapter by AnyLanguageModel's Foundation Models 26-style
+`LanguageModel.respond(within:)` contract. It owns request-context resolution, Tool
+snapshot selection and execution, continuation rounds, Tool delegate decisions,
+session-facing cancellation, transcript checkpoints, and the Tool-round policy.
+
+Non-streaming and streaming responses use the same driver state machine. The
+non-streaming interface collects its terminal result; the streaming interface
+exposes the same run's snapshots. Do not add a second session loop or move this
+compatibility behavior into the provider adapter.
+
+This driver is a deletion boundary, not a new runtime interface. When
+AnyLanguageModel exposes a Foundation Models 27-style executor seam, remove the
+driver and connect that seam to `PiAIProviderAdapter`; do not redesign the provider
+adapter or `ProviderRuntime` mapping during that migration.
+
+### Detailed invariants
+
 - Tool schema mapping materializes AnyLanguageModel's local root `$ref` into
   an object before passing it to the provider runtime, preserving `$defs` for
   nested references. Unresolved, cyclic, or non-object roots fail explicitly.
   This prevents providers that read root properties from receiving an empty
   tool signature. It does not claim all providers preserve nested references.
-- Non-streaming provider tool calls are executed through the tools already owned
+- `SessionCompatibilityDriver` executes provider tool calls in both response modes
+  through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
   Immediately before every provider request, including a continuation after a
   tool round, Core resolves AnyLanguageModel's immutable request context. The

@@ -393,6 +393,54 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
+  func testProvidedToolOutputContinuesWithoutExecutingInBothModes() async throws {
+    let call = ProviderToolCall(
+      id: "provided-call",
+      name: "echo",
+      arguments: .object(["value": .string("must-not-execute")])
+    )
+    for streaming in [false, true] {
+      let counter = ExecutionCounter()
+      let runtime = FakeRuntime { request in
+        if let result = request.messages.compactMap({ message -> ProviderToolResult? in
+          guard case .toolResult(let result) = message else { return nil }
+          return result
+        }).first {
+          XCTAssertEqual(result.toolCallID, call.id)
+          XCTAssertEqual(result.toolName, call.name)
+          XCTAssertEqual(result.content, [.text("provided")])
+          return responseEvents(for: request, text: "done")
+        }
+        return [
+          .responseStarted(metadata(for: request)),
+          .toolCallStarted(id: call.id, name: call.name),
+          .toolCallCompleted(call),
+          .responseSnapshot(
+            responseSnapshot(
+              for: request,
+              content: [.toolCall(call)],
+              finishReason: .toolCalls
+            )
+          ),
+          .completed(.toolCalls),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        tools: [CountingEchoTool(counter: counter)]
+      )
+      session.toolExecutionDelegate = ProvideToolOutput()
+
+      let response =
+        try await streaming
+        ? session.streamResponse(to: "Provide").collect() : session.respond(to: "Provide")
+
+      XCTAssertEqual(response.content, "done")
+      let executionCount = await counter.count
+      XCTAssertEqual(executionCount, 0)
+    }
+  }
+
   func testCancellationAfterReasoningDoesNotCommitResponse() async throws {
     let received = expectation(description: "reasoning snapshot")
     let stopped = expectation(description: "provider cancelled")
@@ -1401,6 +1449,55 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
+  func testProviderAndModelIdentityValidationFailsInBothModes() async throws {
+    for mismatchTerminal in [false, true] {
+      for mismatchProvider in [false, true] {
+        for streaming in [false, true] {
+          let runtime = FakeRuntime { request in
+            let providerID = mismatchProvider ? "other-provider" : request.providerID
+            let modelID = mismatchProvider ? request.modelID : "other-model"
+            let start =
+              mismatchTerminal
+              ? metadata(for: request)
+              : ProviderResponseMetadata(
+                responseID: "response",
+                providerID: providerID,
+                modelID: modelID,
+                providerMetadata: [:]
+              )
+            let snapshot = responseSnapshot(
+              for: request,
+              content: [.text("answer")],
+              finishReason: .stop,
+              providerID: mismatchTerminal ? providerID : nil,
+              modelID: mismatchTerminal ? modelID : nil
+            )
+            return [
+              .responseStarted(start),
+              .textDelta("answer"),
+              .responseSnapshot(snapshot),
+              .completed(.stop),
+            ]
+          }
+          let session = LanguageModelSession(
+            model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model")
+          )
+
+          do {
+            if streaming {
+              _ = try await session.streamResponse(to: "Hello").collect()
+            } else {
+              _ = try await session.respond(to: "Hello")
+            }
+            XCTFail("expected provider response identity validation failure")
+          } catch let error as AIReasoningCoreError {
+            XCTAssertEqual(error.code, .invalidProviderResponse)
+          }
+        }
+      }
+    }
+  }
+
   func testToolCompletionWithoutStartFailsBeforeExecution() async throws {
     let runtime = FakeRuntime { request in
       [
@@ -1685,13 +1782,15 @@ private func responseSnapshot(
   for request: ProviderRequest,
   content: [ProviderAssistantContent],
   finishReason: ProviderFinishReason,
-  usage: ProviderUsage? = providerUsage()
+  usage: ProviderUsage? = providerUsage(),
+  providerID: String? = nil,
+  modelID: String? = nil
 ) -> ProviderResponseSnapshot {
   ProviderResponseSnapshot(
     responseID: "response",
-    providerID: request.providerID,
+    providerID: providerID ?? request.providerID,
     protocolID: "test-protocol",
-    modelID: request.modelID,
+    modelID: modelID ?? request.modelID,
     responseModelID: nil,
     content: content.map { item in
       switch item {
@@ -1749,6 +1848,12 @@ private struct StopTools: ToolExecutionDelegate {
   func toolCallDecision(for toolCall: Transcript.ToolCall, in session: LanguageModelSession) async
     -> ToolExecutionDecision
   { .stop }
+}
+
+private struct ProvideToolOutput: ToolExecutionDelegate {
+  func toolCallDecision(for toolCall: Transcript.ToolCall, in session: LanguageModelSession) async
+    -> ToolExecutionDecision
+  { .provideOutput([.text(.init(content: "provided"))]) }
 }
 
 private func reasoningEntries<S: Sequence>(_ entries: S) -> [Transcript.Reasoning]
