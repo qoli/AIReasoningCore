@@ -44,15 +44,25 @@ struct PiAIProviderAdapter: Sendable {
     tools: [any Tool],
     continuation: PiAIProviderContinuation,
     options: ProviderGenerationOptions,
-    onUpdate: ((PiAIProviderRoundUpdate) throws -> Void)? = nil
+    onUpdate: ((PiAIProviderRoundUpdate) async throws -> Void)? = nil
   ) async throws -> PiAIProviderRound {
     let messages = try PiAIProviderMapper.messages(from: transcript) + continuation.messages
+    return try await generateRound(
+      messages: messages, tools: PiAIProviderMapper.tools(from: tools), options: options,
+      onUpdate: onUpdate)
+  }
+
+  func generateRound(
+    messages: [ProviderMessage], tools: [ProviderToolDefinition],
+    options: ProviderGenerationOptions,
+    onUpdate: ((PiAIProviderRoundUpdate) async throws -> Void)? = nil
+  ) async throws -> PiAIProviderRound {
     let request = ProviderRequest(
       id: UUID().uuidString,
       providerID: providerID,
       modelID: modelID,
       messages: messages,
-      tools: try PiAIProviderMapper.tools(from: tools),
+      tools: tools,
       options: options
     )
     return try await collect(runtime.stream(request), onUpdate: onUpdate)
@@ -75,7 +85,7 @@ struct PiAIProviderAdapter: Sendable {
 
   private func collect(
     _ stream: AsyncThrowingStream<ProviderEvent, any Error>,
-    onUpdate: ((PiAIProviderRoundUpdate) throws -> Void)?
+    onUpdate: ((PiAIProviderRoundUpdate) async throws -> Void)?
   ) async throws -> PiAIProviderRound {
     var text = ""
     let roundID = UUID().uuidString
@@ -131,14 +141,14 @@ struct PiAIProviderAdapter: Sendable {
           content.append(.text(delta))
         }
         reasoningIndex = nil
-        try onUpdate?(
+        try await onUpdate?(
           PiAIProviderRoundUpdate(
             text: text,
             reasoningEntries: PiAIProviderMapper.reasoningEntries(
               from: content,
               roundID: roundID
             ),
-            usage: reportedUsage.value
+            usage: reportedUsage.value, content: content
           )
         )
       case .toolCallStarted(let id, let name):
@@ -194,14 +204,14 @@ struct PiAIProviderAdapter: Sendable {
           reasoningIndex = content.count
           content.append(.reasoning(.init(text: delta, signature: nil, providerMetadata: [:])))
         }
-        try onUpdate?(
+        try await onUpdate?(
           PiAIProviderRoundUpdate(
             text: text,
             reasoningEntries: PiAIProviderMapper.reasoningEntries(
               from: content,
               roundID: roundID
             ),
-            usage: reportedUsage.value
+            usage: reportedUsage.value, content: content
           )
         )
       case .reasoningSignatureDelta:
@@ -212,14 +222,14 @@ struct PiAIProviderAdapter: Sendable {
         reportedUsage.merge(update)
         let current = reportedUsage.value
         if current != previous {
-          try onUpdate?(
+          try await onUpdate?(
             PiAIProviderRoundUpdate(
               text: text,
               reasoningEntries: PiAIProviderMapper.reasoningEntries(
                 from: content,
                 roundID: roundID
               ),
-              usage: current
+              usage: current, content: content
             )
           )
         }
@@ -240,6 +250,7 @@ struct PiAIProviderAdapter: Sendable {
       }
     }
 
+    try Task.checkCancellation()
     guard completed else {
       throw AIReasoningCoreError(
         .invalidProviderResponse,
@@ -302,7 +313,7 @@ struct PiAIProviderAdapter: Sendable {
         roundID: roundID
       ),
       assistantMessage: assistantMessage,
-      usage: reportedUsage.value
+      usage: reportedUsage.value, snapshot: terminalSnapshot, content: terminalContent
     )
   }
 
@@ -361,6 +372,7 @@ struct PiAIProviderRoundUpdate: Sendable {
   let text: String
   let reasoningEntries: [Transcript.Entry]
   let usage: PiAIGenerationUsage
+  let content: [ProviderAssistantContent]
 }
 
 struct PiAIProviderRound: Sendable {
@@ -370,6 +382,8 @@ struct PiAIProviderRound: Sendable {
   let reasoningEntries: [Transcript.Entry]
   fileprivate let assistantMessage: ProviderAssistantMessage?
   let usage: PiAIGenerationUsage
+  let snapshot: ProviderResponseSnapshot
+  let content: [ProviderAssistantContent]
 }
 
 struct PiAIGenerationUsage: Sendable, Equatable {

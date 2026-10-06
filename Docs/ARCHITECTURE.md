@@ -2,18 +2,23 @@
 
 ## Product seam
 
-The caller-facing seam is the AnyLanguageModel contract family. The package
-defines no parallel inference protocol, session type, transcript or tool system.
+On OS 27, the caller-facing seam is Apple's Foundation Models contract family.
+`PiAILanguageModel` conforms to the native `LanguageModel`; its executor receives
+the canonical transcript, enabled Tool definitions, schema and options, and emits
+generation-channel events. The system Session owns Tool execution and continuation.
+The package defines no parallel inference protocol, session type, transcript or
+tool system. AnyLanguageModel remains the explicit compatibility seam where the
+native executor contract is unavailable.
 
 ```text
 App
-└── LanguageModelSession
-    ├── PiAILanguageModel (thin conformance)
-    │   └── SessionCompatibilityDriver (transitional)
+└── FoundationModels.LanguageModelSession (OS 27)
+    ├── PiAILanguageModel (native conformance)
+    │   └── PiAILanguageModel.Executor (one generation request)
     │       └── PiAIProviderAdapter (session-independent)
     │           ├── ProviderRuntime (pi-ai-swift)
     │           └── optional provider asset callback
-    └── AnyLanguageModel.Tool (Host supplied)
+    └── FoundationModels.Tool (Host supplied)
 ```
 
 `ProviderRuntime` is injected because a live runtime and a deterministic test
@@ -25,9 +30,10 @@ interface around it. Model and Tools are peer dependencies of
 
 ### Permanent Core responsibility
 
-- `PiAILanguageModel` is the thin public `LanguageModel` conformance. It delegates
-  the current session-shaped requirements without implementing provider mapping or
-  a second generation state machine.
+- `PiAILanguageModel` is the thin public model conformance. On OS 27 its executor
+  maps one canonical generation request and streams channel events; the native
+  Session owns orchestration. Its legacy session-shaped requirements delegate to
+  the compatibility driver, without a second generation state machine.
 - `PiAIProviderAdapter` and `PiAIProviderMapper` map `Transcript`, tools, schemas and
   generation options to
   pi-ai-swift DTOs, including output modality, reasoning effort, session and
@@ -38,6 +44,28 @@ interface around it. Model and Tools are peer dependencies of
   and validates provider events, preserves opaque assistant replay state, maps
   reasoning and usage, and delivers asset events. It never receives or reads a
   `LanguageModelSession`.
+
+### Native executor mapping
+
+The native path reuses the same provider event validation and usage reducer. It
+maps canonical image attachments to upright PNG pixels at the ProviderRequest
+boundary. Native Transcript Codable remains the caller's persistence authority;
+Core does not create a reduced conversation record. Response/reasoning/Tool-call
+metadata retains signed text, opaque Tool fields and terminal assistant replay.
+Replayed content must still match the canonical entries, so a stale metadata copy
+cannot silently override edited history.
+
+Each executor invocation creates fresh transcript entry IDs. A logical request ID
+can span multiple Tool rounds and cannot be used as their entry identity. Per-call
+metadata precedes argument emission, following Apple's channel contract. Text and
+reasoning stream before the first pending Tool call; calls and subsequent mixed
+content are emitted in order only after the terminal provider snapshot validates.
+The executor returns without executing a Tool or starting another provider round.
+
+Capabilities come from the catalog passed by the caller. Native options map
+temperature, maximum response tokens, schema, Tool calling mode and reasoning
+level. `reasoningLevel(.custom(...))` uses the provider's public reasoning effort
+names; unsupported sampling or reasoning values fail explicitly.
 
 ### Current compatibility responsibility
 

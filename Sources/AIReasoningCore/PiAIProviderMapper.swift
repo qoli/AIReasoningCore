@@ -163,8 +163,8 @@ enum PiAIProviderMapper {
     }
   }
 
-  private static func toolInputSchema(
-    _ schema: GenerationSchema
+  static func toolInputSchema<Schema: Encodable>(
+    _ schema: Schema
   ) throws -> PiAIProviderRuntime.JSONValue {
     guard case .object(var root) = try encodedJSONValue(schema) else {
       throw AIReasoningCoreError(.unsupportedOperation, "tool input schema must be an object")

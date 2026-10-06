@@ -103,7 +103,7 @@ struct SessionCompatibilityDriver: Sendable {
         lastSnapshot = snapshot
       }
 
-      let updateHandler: ((PiAIProviderRoundUpdate) throws -> Void)?
+      let updateHandler: ((PiAIProviderRoundUpdate) async throws -> Void)?
       if onSnapshot == nil {
         updateHandler = nil
       } else {

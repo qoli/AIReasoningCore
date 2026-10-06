@@ -78,6 +78,7 @@ current copied transcript/event shape as exhaustive.
 
 ## LanguageModelExecutor architecture
 
+
 Foundation Models 27 separates model configuration from execution through
 `LanguageModel.Executor` and `LanguageModelExecutor`. The executor receives a
 generation request and sends normalized events into a generation channel; the
@@ -86,20 +87,63 @@ session owns the surrounding lifecycle.
 AnyLanguageModel still exposes the Foundation Models 26-style
 `LanguageModel.respond(within: LanguageModelSession, ...)` requirements. Its
 [2.0 roadmap](https://github.com/huggingface/AnyLanguageModel/issues/210) identifies
-Foundation Models 27 session construction as source-breaking work, but no published
-executor contract is available for Core to adopt. Core must not predict that public
-interface or create a parallel Session, Transcript, Tool, or Executor family.
+Foundation Models 27 session construction as source-breaking work. That remains a
+back-deployment gate; it does not prevent adopting Apple's system framework on OS 27.
+Core's `PiAILanguageModel` now also conforms directly to the native `LanguageModel`
+with `PiAILanguageModel.Executor`. It consumes one canonical generation request and
+uses the existing provider adapter for one provider round, with no Tool execution
+or continuation loop in the executor. Native clients supply catalog capabilities
+at model construction and compose ordinary Foundation Models Tools in the Session.
 
-Until that gate closes, `SessionCompatibilityDriver` is the one explicit temporary
+Where the native executor contract is unavailable, `SessionCompatibilityDriver` is the one explicit temporary
 owner of request-context resolution, Tool execution and continuation orchestration.
 The session-independent `PiAIProviderAdapter` owns the permanent provider request,
 event, replay, usage and asset mapping. Non-streaming and streaming responses share
 one compatibility state machine.
 
-Deletion gate: when AnyLanguageModel publishes an executor-style seam, Core must be
+OS 27 callers must use the native Session and executor rather than the compatibility
+driver. Deletion gate: when AnyLanguageModel publishes an executor-style seam, Core must be
 able to remove `SessionCompatibilityDriver` and connect the new seam to
 `PiAIProviderAdapter` without changing the `ProviderRuntime` public seam or rewriting
 provider mapping. This gate does not block the current internal isolation.
+
+## Host filesystem image Tool outputs
+
+SwiftChat 5ML-86 uses the Pi filesystem definitions pinned at
+`428a12bc775145afa342530a9eaa652efb3e4422`. Its `read` result includes an image
+attachment, not JSON or base64 text. Apple's OS 27 `Tool.Output` remains
+`PromptRepresentable`; `Prompt` and `Attachment<ImageAttachmentContent>` can
+carry that image into the canonical ToolOutput transcript.
+
+The SwiftChat-resolved AML `2b2f15e7e256ec6785c698fc843390b022e97a8c` still stores Prompt
+as text. AML `Tool.makeOutputSegments` and Core `SessionCompatibilityDriver.execute`
+flatten non-structured, non-String outputs through
+`output.promptRepresentation.description`. Core's `PiAIProviderMapper.toolResult`
+already supports image segments, but the Tool execution boundary cannot produce
+them using the canonical contract. The Host must report this incompatibility;
+it must not add an exclusive Tool delegate, base64-text result, or second loop
+to conceal it.
+
+The owning Core source now passes a real native Session image-Tool continuation:
+the next ProviderRequest contains image data, assistant replay metadata, Tool-call
+opaque fields and IDs; native Transcript Codable restore continues through the
+same provider seam. Native response/reasoning metadata preserves signed text and
+provider replay without using an exclusive delegate or an app loop. Each executor
+invocation has fresh entry IDs because a logical request ID is reused across Tool
+rounds. Per-call metadata is emitted before arguments. Tool calls are emitted only
+after the provider terminal snapshot passes validation, preventing rejected
+responses from executing Host side effects.
+
+Source receipts (Xcode 27.0, SDK 27.0, runtime macOS 27.0.1): 47 Core tests passed,
+including six native Session tests for image continuation/Codable, mixed signed
+turns, schema/reasoning/usage, streaming/identity, invalid terminal Tool snapshots,
+and cancellation/drain. Generic iOS Simulator build and format/diff checks passed.
+This resolves published AML `2b2f15e7` and pi-ai-swift `44c079d9`; it is still local
+Core source validation. SwiftChat's remote Core pin and production Harness have
+not adopted this change yet. OS 26 Prompt/attachment compatibility also remains
+open. Neither the local source tests nor a Host-only attachment Tool establish
+production AIChat integration.
+
 
 ## Dynamic instructions
 

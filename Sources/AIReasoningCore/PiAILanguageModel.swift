@@ -37,11 +37,15 @@ public struct PiAILanguageModel: LanguageModel {
   }
 
   private let compatibilityDriver: SessionCompatibilityDriver
+  let providerAdapter: PiAIProviderAdapter
+  let executorID: UUID
+  let providerCapabilities: ProviderCapabilities?
 
   public init(
     runtime: any ProviderRuntime,
     providerID: String,
     modelID: String,
+    capabilities: ProviderCapabilities? = nil,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil
   ) {
     let adapter = PiAIProviderAdapter(
@@ -51,6 +55,9 @@ public struct PiAILanguageModel: LanguageModel {
       onAsset: onAsset
     )
     compatibilityDriver = SessionCompatibilityDriver(adapter: adapter)
+    providerAdapter = adapter
+    executorID = UUID()
+    providerCapabilities = capabilities
   }
 
   public func respond<Content>(
