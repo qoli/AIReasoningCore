@@ -15,6 +15,56 @@
       textInput: true, imageInput: true, toolCalling: true,
       reasoning: true, structuredOutput: true, imageGeneration: false)
 
+    func testRealCompletionsRuntimeContinuesNativeTextToolsAndRestoredTranscript() async throws {
+      let transport = NativeCompletionsTransport()
+      let runtime = try CustomProviderRuntime(
+        providers: [
+          .init(
+            id: "native-completions", baseURL: URL(string: "https://fixture.invalid/v1"),
+            api: "openai-completions",
+            models: [
+              .init(
+                id: "model", capabilities: capabilities,
+                metadata: [
+                  "cost": .object([
+                    "input": .integer(0), "output": .integer(0),
+                    "cacheRead": .integer(0), "cacheWrite": .integer(0),
+                  ])
+                ])
+            ])
+        ],
+        credentialStore: InMemoryProviderCredentialStore(credentials: [
+          "native-completions": .apiKey(.init(key: "synthetic-fixture", metadata: [:]))
+        ]), streamingTransport: transport)
+      let model = PiAILanguageModel(
+        runtime: runtime, providerID: "native-completions", modelID: "model",
+        capabilities: capabilities)
+      let session = FoundationModels.LanguageModelSession(
+        model: model, tools: [FixtureEchoTool()], transcript: .init())
+      let first = try await session.respond(to: "First synthetic turn")
+      XCTAssertEqual(first.content, "first")
+      XCTAssertEqual(Set(session.transcript.map(\.id)).count, session.transcript.count)
+      let second = try await session.respond(to: "Use echo")
+      XCTAssertEqual(second.content, "done")
+      XCTAssertEqual(Set(session.transcript.map(\.id)).count, session.transcript.count)
+      XCTAssertEqual(
+        session.transcript.filter { if case .toolOutput = $0 { true } else { false } }.count, 1)
+      let restored = try JSONDecoder().decode(
+        FoundationModels.Transcript.self, from: JSONEncoder().encode(session.transcript))
+      let reconstructed = FoundationModels.LanguageModelSession(
+        model: model, tools: [FixtureEchoTool()], transcript: restored)
+      let continued = try await reconstructed.respond(to: "Continue restored")
+      XCTAssertEqual(continued.content, "restored")
+      XCTAssertEqual(Set(reconstructed.transcript.map(\.id)).count, reconstructed.transcript.count)
+      let requests = try await transport.bodies.map {
+        try XCTUnwrap(JSONSerialization.jsonObject(with: $0) as? [String: Any])
+      }
+      XCTAssertEqual(requests.count, 4)
+      let messages = try XCTUnwrap(requests.last?["messages"] as? [[String: Any]])
+      XCTAssertTrue(messages.contains { $0["role"] as? String == "tool" })
+      XCTAssertTrue(messages.contains { $0["reasoning_content"] as? String == "thinking-1" })
+    }
+
     func testNativeToolOnlyInstructionsDoNotProduceEmptySystemMessage() async throws {
       let runtime = FoundationFixtureRuntime { request in
         XCTAssertFalse(
@@ -560,6 +610,51 @@
       continuation.yield(.completed(.stop))
       continuation.finish()
       self.continuation = nil
+    }
+  }
+
+  private actor NativeCompletionsTransport: ProviderHTTPStreamingTransport {
+    private(set) var bodies: [Data] = []
+
+    func stream(_ request: URLRequest) async throws -> ProviderHTTPStreamingResponse {
+      bodies.append(try XCTUnwrap(request.httpBody))
+      let index = bodies.count
+      let responseID = "wire-\(index)"
+      func chunk(_ delta: [String: Any], finish: String? = nil) throws -> String {
+        let choice: [String: Any] = ["delta": delta, "finish_reason": finish as Any? ?? NSNull()]
+        var value: [String: Any] = ["id": responseID, "choices": [choice]]
+        if finish != nil {
+          value["usage"] = ["prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15]
+        }
+        return
+          "data: \(String(decoding: try JSONSerialization.data(withJSONObject: value), as: UTF8.self))\n\n"
+      }
+      var wire = try chunk(["reasoning_content": "thinking-\(index)"])
+      if index == 2 {
+        wire += try chunk(["content": "\n"])
+        wire += try chunk(
+          [
+            "tool_calls": [
+              [
+                "index": 0, "id": "wire-call",
+                "function": [
+                  "name": "echo", "arguments": "{\"value\":\"synthetic\"}",
+                ],
+              ]
+            ]
+          ], finish: "tool_calls")
+      } else {
+        let text = index == 1 ? "first" : index == 3 ? "done" : "restored"
+        wire += try chunk(["content": text], finish: "stop")
+      }
+      wire += "data: [DONE]\n\n"
+      let bytes = Data(wire.utf8)
+      return .init(
+        statusCode: 200, headers: ["content-type": "text/event-stream"],
+        body: AsyncThrowingStream {
+          $0.yield(bytes)
+          $0.finish()
+        })
     }
   }
 

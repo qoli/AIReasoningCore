@@ -3,6 +3,36 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## OpenAI Completions content order and logical block identity (2026-10-07)
+
+Live SwiftChat oMLX acceptance against Pi `44c079d` found native reasoning
+and response entries with duplicate IDs and a subsequent replay mismatch.
+The accepted upstream `d5629e20489ccf770ed90b5a33941cb3b7ef24d0` retains
+first-seen block order, while the Swift Completions reducer rebuilt terminal
+content as text/reasoning/tools. The owning Pi repair preserves first-seen
+terminal content and Tool completion order at the unchanged upstream pin.
+
+Core's actual-runtime regression uses CustomProviderRuntime, the real wire
+adapter and native LanguageModelSession. It fails with duplicate entry IDs
+and invalidTranscript against old Pi, and passes against the repaired source
+for reasoning-first text, another prompt, Tool execution/continuation and
+Codable restoration. The local suite has 53 passing tests. Formal remote Pi
+`52b206b0ca281c922bd18cc5b8539fcdd4199f90` also passes all 53 macOS tests
+without an editable dependency. The actual-runtime regression passes in an
+iPad Pro 13-inch (M5), iOS 27 Simulator process, with the same resolved remote
+revision. Root and Smoke lockfiles record that revision. Live SwiftChat
+provider acceptance remains a separate validation layer.
+
+There is a narrower remaining consumer seam gap: normalized text/reasoning
+deltas carry no upstream logical block index. Metadata-only reasoning can
+precede the first visible text block, and upstream can update one reasoning
+or text block through interleaved deltas. Core's live run-based partial content
+cannot represent every such identity/order from these deltas alone. This
+source repair and its contiguous oMLX acceptance do not establish universal
+native block identity parity; a source-proven seam evolution must preserve
+the real block identity rather than inventing IDs or discarding replay checks.
+The three-operation ProviderRuntime interface is unchanged.
+
 ## Native Tool-only instructions mapping (2026-10-07)
 
 SwiftChat's computer-use acceptance against published Core `f771323807d0f57b16bfb53745420145f2834f5f`

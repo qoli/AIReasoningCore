@@ -71,6 +71,12 @@ Native Tool-only instructions entries may have no text. They remain in the
 canonical Transcript; enabled Tools are mapped separately, and no empty provider
 system text block is emitted for such an entry.
 
+Provider normalized terminal content must preserve upstream logical block
+order. A real OpenAI Completions runtime regression covers reasoning-first
+native text, second-turn replay, Tool continuation and Codable restoration.
+Partial deltas do not yet expose every upstream block identity; metadata-only
+and interleaved-block limitations remain explicit in UPSTREAM_GATES.md.
+
 On the installed Xcode 27.0 SDK, public ResponseStream snapshots are buffered until
 the executor returns even though the canonical Session transcript changes live.
 Hosts can observe that native transcript for presentation; the executor and
