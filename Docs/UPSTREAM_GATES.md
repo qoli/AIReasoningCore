@@ -3,6 +3,21 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## Native Tool-only instructions mapping (2026-10-07)
+
+SwiftChat's computer-use acceptance against published Core `f771323807d0f57b16bfb53745420145f2834f5f`
+reproduced Kimi K3-256K HTTP 400 before any output. Sanitized diagnostics showed
+one empty system message, six enabled Tools, no response schema, and a server
+error mentioning empty content. The native Session stores a Tool-only
+instructions entry with zero text segments; Core had encoded it as `.system("")`.
+
+The source correction omits only the empty provider system text block, retaining
+the canonical instructions entry and the enabled Tool definitions. A regression
+using a native Session with Tools and an initially empty Transcript failed before
+the change and passes afterward. Local verification is not remote dependency or
+live-provider acceptance; SwiftChat must resolve the published correction and
+verify a new provider request before closing that integration gate.
+
 ## AnyLanguageModel 0.16 synchronization (2026-10-06)
 
 The maintained fork merged the fixed upstream candidate from fork base

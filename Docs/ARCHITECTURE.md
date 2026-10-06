@@ -67,6 +67,10 @@ temperature, maximum response tokens, schema, Tool calling mode and reasoning
 level. `reasoningLevel(.custom(...))` uses the provider's public reasoning effort
 names; unsupported sampling or reasoning values fail explicitly.
 
+Native Tool-only instructions entries may have no text. They remain in the
+canonical Transcript; enabled Tools are mapped separately, and no empty provider
+system text block is emitted for such an entry.
+
 On the installed Xcode 27.0 SDK, public ResponseStream snapshots are buffered until
 the executor returns even though the canonical Session transcript changes live.
 Hosts can observe that native transcript for presentation; the executor and

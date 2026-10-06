@@ -147,7 +147,11 @@
           }
         case .instructions(let value):
           try flush()
-          result.append(.system(try text(value.segments)))
+          // A native Session can retain Tool definitions in an instructions
+          // entry with no text. Tools are mapped from enabledToolDefinitions;
+          // this entry does not supply an empty provider system text block.
+          let instructions = try text(value.segments)
+          if !instructions.isEmpty { result.append(.system(instructions)) }
         case .prompt(let value):
           try flush()
           result.append(

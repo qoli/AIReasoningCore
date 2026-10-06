@@ -15,6 +15,28 @@
       textInput: true, imageInput: true, toolCalling: true,
       reasoning: true, structuredOutput: true, imageGeneration: false)
 
+    func testNativeToolOnlyInstructionsDoNotProduceEmptySystemMessage() async throws {
+      let runtime = FoundationFixtureRuntime { request in
+        XCTAssertFalse(
+          request.messages.contains {
+            if case .system(let text) = $0 { text.isEmpty } else { false }
+          })
+        XCTAssertEqual(request.tools.map(\.name), ["echo"])
+        return fixtureEvents(request, [.text(.init(text: "OK", signature: nil))])
+      }
+      let model = PiAILanguageModel(
+        runtime: runtime, providerID: "test", modelID: "model", capabilities: capabilities)
+      let session = FoundationModels.LanguageModelSession(
+        model: model, tools: [FixtureEchoTool()], transcript: .init())
+      let response = try await session.respond(to: "Reply OK without using tools")
+      XCTAssertEqual(response.content, "OK")
+      guard case .instructions(let instructions) = session.transcript.first else {
+        return XCTFail("The canonical Tool instructions must remain in the Session")
+      }
+      XCTAssertTrue(instructions.segments.isEmpty)
+      XCTAssertEqual(instructions.toolDefinitions.map(\.name), ["echo"])
+    }
+
     func testCanonicalSessionExecutesImageToolAndPersistsProviderContinuation() async throws {
       let runtime = FoundationFixtureRuntime { request in
         if case .toolResult(let result) = request.messages.last {
