@@ -1,5 +1,5 @@
 {
-  "originHash" : "ae69cdaff21cca0fd1b1805c3ee104ff0b26c5248ddecb617f7b8e76c735a625",
+  "originHash" : "b28ed9d99076201976ebd4a1642fd20040a2511708f3ede34e23374ca6cfef8b",
   "pins" : [
     {
       "identity" : "anylanguagemodel",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/qoli/AnyLanguageModel.git",
       "state" : {
         "branch" : "main",
-        "revision" : "fde42a49121c452115b3e655852f0501b77dd9dd"
+        "revision" : "0b5c2856d8984e0b8a973a7ff19889adb200cbfa"
       }
     },
     {

@@ -6,6 +6,52 @@ import XCTest
 @testable import AIReasoningCore
 
 final class PiAILanguageModelTests: XCTestCase {
+  func testLegacyTranscriptOptionsRestoreAndContinueInBothModes() async throws {
+    // Frozen pre-0.16 Codable shape, rather than JSON produced by the candidate encoder.
+    // Custom options already lacked a decoder registry and remain absent after restore.
+    let json = #"""
+      {"entries":[
+        {"prompt":{"_0":{"id":"legacy-prompt","segments":[
+          {"text":{"_0":{"id":"legacy-question","content":"Earlier question"}}}],
+          "options":{"sampling":{"mode":{"topK":{"_0":40,"seed":7}}},
+            "temperature":0.5,"maximumResponseTokens":64,
+            "customOptionsStorage":{}}}}},
+        {"response":{"_0":{"id":"legacy-response","assetIDs":[],"segments":[
+          {"text":{"_0":{"id":"legacy-answer","content":"Earlier answer"}}}]}}}
+      ]}
+      """#
+    let restored = try JSONDecoder().decode(Transcript.self, from: Data(json.utf8))
+    guard case .prompt(let prompt) = restored[0] else {
+      return XCTFail("Expected legacy prompt")
+    }
+    XCTAssertEqual(
+      prompt.options,
+      GenerationOptions(
+        sampling: .random(top: 40, seed: 7), temperature: 0.5,
+        maximumResponseTokens: 64))
+    XCTAssertNil(prompt.options[custom: PiAILanguageModel.self])
+
+    for streaming in [false, true] {
+      let runtime = FakeRuntime { request in
+        XCTAssertEqual(request.messages.count, 3)
+        XCTAssertEqual(request.messages[0], .user([.text("Earlier question")]))
+        XCTAssertEqual(request.messages[1], .assistant([.text("Earlier answer")]))
+        return responseEvents(for: request, text: "Continued")
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        transcript: restored)
+      let response =
+        try await streaming
+        ? session.streamResponse(to: "Continue").collect() : session.respond(to: "Continue")
+      XCTAssertEqual(response.content, "Continued")
+      let persisted = try JSONDecoder().decode(
+        Transcript.self, from: JSONEncoder().encode(session.transcript))
+      XCTAssertEqual(Array(persisted.prefix(2)), Array(restored))
+      XCTAssertEqual(persisted.count, 4)
+    }
+  }
+
   func testTextResponseUsesProviderRuntime() async throws {
     let runtime = FakeRuntime { request in
       responseEvents(for: request, text: "Hello from pi")

@@ -62,6 +62,10 @@ boundaries. The baseline requires no API key or public network service.
 
 ## Development setup
 
+The AnyLanguageModel 0.16 dependency requires Swift 6.3 or newer;
+macOS 14 and iOS 17 deployment targets are unchanged. The currently published
+graph and verification layers are recorded in [upstream gates](Docs/UPSTREAM_GATES.md).
+
 Dependencies are resolved through Swift Package Manager. Run:
 
 ```bash

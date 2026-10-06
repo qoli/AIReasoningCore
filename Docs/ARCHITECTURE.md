@@ -91,7 +91,13 @@ adapter or `ProviderRuntime` mapping during that migration.
 - Structured streaming snapshots may contain partial JSON. Final structured
   responses must pass complete JSON validation before conversion to the requested
   type; truncated JSON is rejected even if the partial parser could repair it.
-- Reasoning uses the maintained fork's FM27-shaped `Transcript.Entry.reasoning`
+- The upstream 0.16 synchronization supplies the same reasoning,
+  cancellation and immutable per-request context seams. Dynamic composition
+  preserves component whitespace and excludes old instructions from dynamic
+  history. Adoption does not change the driver/provider ownership above or
+  introduce an executor contract; published integration status is tracked in
+  `UPSTREAM_GATES.md`.
+- Reasoning uses the FM27-shaped `Transcript.Entry.reasoning`
   and `Transcript.Reasoning`, carried in cumulative `transcriptEntries`. Stable
   entry and text-segment IDs identify updates within a provider round; completed
   rounds retain their entries. `response.content` contains only the answer.

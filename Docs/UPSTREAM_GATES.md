@@ -3,6 +3,58 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## AnyLanguageModel 0.16 synchronization (2026-10-06)
+
+The maintained fork merged the fixed upstream candidate from fork base
+`fde42a49121c452115b3e655852f0501b77dd9dd` with huggingface main / release
+0.16.0 `3e00403e1ea1d2e6870eb07747d602482e2fb982`; their common base is
+`0626c0fb37ba2cbc23eddc4871aefa7e98dd6c70`. The merged source tree adopts
+upstream implementations of reasoning, request-scoped cancellation and dynamic
+instructions, including nested whitespace preservation, history instruction
+filtering and Anthropic blank-response filtering. No separate fork source
+implementation is needed for current Core consumers.
+
+The normal merge is published on qoli/main as
+`0b5c2856d8984e0b8a973a7ff19889adb200cbfa`, retaining both original parents.
+Root and Smoke pins resolve that revision; the dependency URL remains
+qoli/AnyLanguageModel and no editable dependency is installed. pi-ai-swift stays
+at `44c079d92d6ffbcdfbef73019664d04f1ce93269`. Earlier candidate source tests
+remain distinct from formal remote-graph verification below.
+
+Upstream now requires Swift tools 6.3, while deployment targets remain macOS 14
+and iOS 17. Swift 6.4 / Xcode 27 results do not establish Swift 6.3, Linux or
+MLX runtime acceptance; upstream's CI matrix declares separate coverage for
+those toolchains and traits. GenerationOptions no longer conforms to Codable;
+Transcript.Prompt's internal coding retains the earlier built-in options JSON.
+Custom options remain absent after decoding, as before. Optional nil schema
+properties are omitted by default, with explicit-null opt-in. Core continues to
+map options and tool/response schemas through its existing provider adapter.
+
+AML 0.16 still exposes respond(within:), rather than Apple's executor contract.
+SessionCompatibilityDriver remains the sole transitional orchestration owner.
+The executor/data/profile parity gates below remain open; the native system-model
+bridge and upstream feature acceptance do not close them. Previous dated receipts
+below describe their original revisions and are not this synchronization's acceptance.
+
+Local candidate verification: 41 Core tests and recursive format lint passed;
+the additional regression restores frozen pre-0.16 transcript JSON and continues
+in both streaming and non-streaming modes. The generic iOS Simulator build passed
+with candidate AML source and existing remote provider/dependency pins. Temporary
+AML edit/local declarations were removed afterwards. Logs are `/tmp/5ml104-core-tests.log`,
+`/tmp/5ml104-core-format.log` and `/tmp/5ml104-core-candidate-ios.log`. SwiftChat's
+separate candidate host/native acceptance is recorded in its experiments repo;
+these local results alone do not establish remote integration.
+
+Published dependency verification on 2026-10-06: the formal remote graph at AML
+`0b5c2856d8984e0b8a973a7ff19889adb200cbfa` passed all 41 Core tests,
+recursive Swift format lint (successful command exit), the generic iOS Simulator
+Core build and the Smoke project's generic iOS Simulator build. Both locks retain
+the same pi-ai revision and all unrelated pins. No local override or generated
+checkout edit was used. Logs are `/tmp/5ml104-core-remote-tests.log`,
+`/tmp/5ml104-core-remote-format.log`, `/tmp/5ml104-core-remote-ios.log` and
+`/tmp/5ml104-core-remote-smoke.log`. This verifies compilation and deterministic
+Core behavior, not every live provider or Apple's complete executor contract.
+
 ## Foundation Models 27 authority snapshot (2026-09-27)
 
 The installed Xcode 27.0 (`27A266a`) macOS 27 SDK exposes FoundationModels module
