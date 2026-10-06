@@ -67,6 +67,12 @@ temperature, maximum response tokens, schema, Tool calling mode and reasoning
 level. `reasoningLevel(.custom(...))` uses the provider's public reasoning effort
 names; unsupported sampling or reasoning values fail explicitly.
 
+On the installed Xcode 27.0 SDK, public ResponseStream snapshots are buffered until
+the executor returns even though the canonical Session transcript changes live.
+Hosts can observe that native transcript for presentation; the executor and
+Session remain the generation and continuation owners. See UPSTREAM_GATES.md
+for the direct-framework gated reproduction and its verification limits.
+
 ### Current compatibility responsibility
 
 `SessionCompatibilityDriver` is the single transitional implementation of behavior
@@ -200,3 +206,8 @@ Host capability and product persistence behavior are outside this repository.
 The package does not contain browser, filesystem, HTTP/Web, image-generation,
 asset-management, shell, git, build-automation, CLI-agent, iSH, root-filesystem,
 or compatibility-server implementations.
+
+Compatibility Tool output conversion is owned by AnyLanguageModel's ordinary
+`Tool.makeOutputSegments` helper. Core consumes its documented Compatibility SPI,
+which preserves typed Prompt image attachments and structured/String precedence;
+it no longer repeats those output-type decisions in the driver.

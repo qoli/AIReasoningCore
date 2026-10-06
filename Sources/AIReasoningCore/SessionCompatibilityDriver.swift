@@ -1,4 +1,4 @@
-import AnyLanguageModel
+@_spi(Compatibility) import AnyLanguageModel
 import Foundation
 import PiAIProviderRuntime
 
@@ -252,15 +252,7 @@ struct SessionCompatibilityDriver: Sendable {
     _ tool: T,
     arguments: GeneratedContent
   ) async throws -> [Transcript.Segment] {
-    let typedArguments = try T.Arguments(arguments)
-    let output = try await tool.call(arguments: typedArguments)
-    if let structured = output as? any ConvertibleToGeneratedContent {
-      return [.structure(.init(source: tool.name, content: structured.generatedContent))]
-    }
-    if let text = output as? String {
-      return [.text(.init(content: text))]
-    }
-    return [.text(.init(content: output.promptRepresentation.description))]
+    try await tool.makeOutputSegments(from: arguments)
   }
 
   private func emptyContent<Content: Generable>(

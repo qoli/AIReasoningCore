@@ -115,14 +115,15 @@ attachment, not JSON or base64 text. Apple's OS 27 `Tool.Output` remains
 `PromptRepresentable`; `Prompt` and `Attachment<ImageAttachmentContent>` can
 carry that image into the canonical ToolOutput transcript.
 
-The SwiftChat-resolved AML `2b2f15e7e256ec6785c698fc843390b022e97a8c` still stores Prompt
-as text. AML `Tool.makeOutputSegments` and Core `SessionCompatibilityDriver.execute`
-flatten non-structured, non-String outputs through
-`output.promptRepresentation.description`. Core's `PiAIProviderMapper.toolResult`
-already supports image segments, but the Tool execution boundary cannot produce
-them using the canonical contract. The Host must report this incompatibility;
-it must not add an exclusive Tool delegate, base64-text result, or second loop
-to conceal it.
+The maintained AML fork now resolves `dfc608d0fdc42f8ca7504fb58c91fe70b70c331f`.
+Its ordinary Prompt and Tool output helpers preserve typed image attachments.
+Core's compatibility driver calls the existing `Tool.makeOutputSegments` through
+AML's explicitly documented Compatibility SPI, removing its duplicated structured /
+String / Prompt output conversion. This SPI is a back-deployment extension, not an
+Apple public API; the OS 27 executor does not consume it. Compatibility transcript
+storage still uses AML's legacy image segments. Stream, nonstream and Codable
+restore tests exercise a normal image Tool and its next provider request without
+an exclusive delegate or another Tool loop.
 
 The owning Core source now passes a real native Session image-Tool continuation:
 the next ProviderRequest contains image data, assistant replay metadata, Tool-call
@@ -144,6 +145,24 @@ not adopted this change yet. OS 26 Prompt/attachment compatibility also remains
 open. Neither the local source tests nor a Host-only attachment Tool establish
 production AIChat integration.
 
+
+### Installed SDK live stream projection
+
+Xcode 27.0 (`27A266a`), FoundationModels `2.0.68.1.402`, buffers public
+ResponseStream snapshots until the executor returns. A direct Foundation model
+and executor, with no Core/Pi layers, sent Apple's append/metadata/usage events
+and remained behind a deterministic gate: the canonical Session transcript
+already contained reasoning and response text with stable IDs, but public
+snapshots numbered zero before return and three afterwards. Changing token counts,
+entry IDs or initial metadata did not remove that buffering.
+
+The provider executor continues to send live channel events. Hosts can observe
+`session.transcript`, the framework's sole canonical authority, to project live
+entries. They must retain the same Session, generation owner and cancellation
+cleanup; provider callbacks or a second transcript/Tool loop are unnecessary.
+The native regression tests observe the actual canonical transcript before
+terminal release and verify completion, cancellation, provider drain, IDs and
+usage. This is an installed-SDK limit, not a claim about newer online APIs.
 
 ## Dynamic instructions
 

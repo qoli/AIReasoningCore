@@ -4,6 +4,7 @@
   import FoundationModels
   import ImageIO
   import PiAIProviderRuntime
+  import Observation
   import XCTest
 
   @testable import AIReasoningCore
@@ -197,6 +198,158 @@
       }
     }
 
+    func testDirectFoundationExecutorMutatesCanonicalTranscriptBeforeReturning() async throws {
+      let sent = expectation(description: "Direct native channel sends awaited")
+      let gate = DirectFoundationGate(sent: sent)
+      let session = FoundationModels.LanguageModelSession(model: DirectFoundationModel(gate: gate))
+      let consumer = Task { () throws -> (String, Int, Int) in
+        var content = ""
+        var beforeReturn = 0
+        var afterReturn = 0
+        for try await snapshot in session.streamResponse(to: "Direct executor probe") {
+          content = snapshot.content
+          if await gate.released { afterReturn += 1 } else { beforeReturn += 1 }
+        }
+        return (content, beforeReturn, afterReturn)
+      }
+      await fulfillment(of: [sent], timeout: 2)
+      let schemaPresent = await gate.schemaPresent
+      let released = await gate.released
+      XCTAssertFalse(released)
+      Self.logDirectCheckpoint(session, phase: "afterSend", schemaPresent: schemaPresent)
+      XCTAssertTrue(Self.hasLiveTextAndReasoning(session.transcript))
+      XCTAssertTrue(session.isResponding)
+      let preterminalIDs = session.transcript.map(\.id)
+      await gate.release()
+      let (final, beforeReturn, afterReturn) = try await consumer.value
+      XCTAssertEqual(final, "Hello")
+      XCTAssertGreaterThan(afterReturn, 0)
+      XCTAssertFalse(session.isResponding)
+      XCTAssertEqual(session.transcript.map(\.id), preterminalIDs)
+      // Installed Xcode 27A266a buffers ResponseStream snapshots until the executor returns,
+      // even though canonical Transcript mutations above are already visible. Record the
+      // distinction; do not promise unavailable preterminal snapshots or invent token counts.
+      print(
+        "Direct native snapshot summary beforeReturn=\(beforeReturn) afterReturn=\(afterReturn)")
+      Self.logDirectCheckpoint(session, phase: "afterReturn", schemaPresent: schemaPresent)
+    }
+
+    private static func hasLiveTextAndReasoning(_ transcript: FoundationModels.Transcript) -> Bool {
+      let reasoning = transcript.contains { entry in
+        guard case .reasoning(let value) = entry else { return false }
+        return value.segments.contains {
+          if case .text(let text) = $0 { text.content == "Thinking" } else { false }
+        }
+      }
+      let response = transcript.contains { entry in
+        guard case .response(let value) = entry else { return false }
+        return value.segments.contains {
+          if case .text(let text) = $0 { text.content == "Hello" } else { false }
+        }
+      }
+      return reasoning && response
+    }
+
+    private static func observeLiveTranscript(
+      _ session: FoundationModels.LanguageModelSession,
+      visible: XCTestExpectation
+    ) -> Task<[String], Never> {
+      Task {
+        let observations = Observations { session.transcript }
+        for await transcript in observations {
+          if Self.hasLiveTextAndReasoning(transcript) {
+            visible.fulfill()
+            return transcript.map(\.id)
+          }
+        }
+        return []
+      }
+    }
+
+    private static func logDirectCheckpoint(
+      _ session: FoundationModels.LanguageModelSession,
+      phase: String, schemaPresent: Bool
+    ) {
+      let shape = session.transcript.map { entry -> String in
+        switch entry {
+        case .instructions: return "instructions"
+        case .prompt: return "prompt"
+        case .response(let value): return "response(segments=\(value.segments.count))"
+        case .reasoning(let value): return "reasoning(segments=\(value.segments.count))"
+        case .toolCalls: return "toolCalls"
+        case .toolOutput: return "toolOutput"
+        @unknown default: return "unknown"
+        }
+      }
+      print(
+        "Direct native checkpoint phase=\(phase) schemaPresent=\(schemaPresent) responding=\(session.isResponding) shape=\(shape.joined(separator: ",")) ids=\(session.transcript.map(\.id).joined(separator: ","))"
+      )
+    }
+
+    func testCanonicalStreamObservesTextAndReasoningBeforeProviderTerminal() async throws {
+      let visible = expectation(description: "Canonical transcript observation before terminal")
+      let stopped = expectation(description: "Provider stream finished")
+      let gate = FoundationStreamGate(stopped: stopped)
+      let session = FoundationModels.LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: FoundationGatedRuntime(gate: gate),
+          providerID: "test", modelID: "model", capabilities: capabilities))
+      let observer = Self.observeLiveTranscript(session, visible: visible)
+      let consumer = Task { () throws -> (String, Int) in
+        var content = ""
+        var snapshots = 0
+        for try await snapshot in session.streamResponse(to: "Stream while provider is gated") {
+          content = snapshot.content
+          snapshots += 1
+        }
+        return (content, snapshots)
+      }
+      // Transcript observation is the SDK-supported continuous projection. The separate
+      // direct native baseline records this SDK's buffering of public ResponseStream snapshots.
+      await fulfillment(of: [visible], timeout: 2)
+      observer.cancel()
+      let liveIDs = await observer.value
+      XCTAssertFalse(liveIDs.isEmpty)
+      let terminalReleased = await gate.terminalReleased
+      XCTAssertFalse(terminalReleased)
+      XCTAssertTrue(session.isResponding)
+      await gate.finish()
+      let (finalContent, snapshots) = try await consumer.value
+      XCTAssertEqual(finalContent, "Hello world")
+      XCTAssertGreaterThan(snapshots, 0)
+      await fulfillment(of: [stopped], timeout: 2)
+      XCTAssertFalse(session.isResponding)
+      XCTAssertEqual(session.transcript.map(\.id), liveIDs)
+      XCTAssertEqual(session.usage.output.totalTokenCount, 2)
+    }
+
+    func testCanonicalStreamCancellationAfterObservedLiveTranscriptDrainsProvider() async throws {
+      let visible = expectation(description: "Canonical live transcript before cancellation")
+      let stopped = expectation(description: "Provider stream cancelled")
+      let gate = FoundationStreamGate(stopped: stopped)
+      let session = FoundationModels.LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: FoundationGatedRuntime(gate: gate),
+          providerID: "test", modelID: "model", capabilities: capabilities))
+      session.transcriptErrorHandlingPolicy = .preserveTranscript
+      let observer = Self.observeLiveTranscript(session, visible: visible)
+      let consumer = Task {
+        for try await _ in session.streamResponse(to: "Cancel a live response") {}
+      }
+      await fulfillment(of: [visible], timeout: 2)
+      observer.cancel()
+      let liveIDs = await observer.value
+      XCTAssertFalse(liveIDs.isEmpty)
+      consumer.cancel()
+      do { try await consumer.value } catch { XCTAssertTrue(error is CancellationError) }
+      await fulfillment(of: [stopped], timeout: 2)
+      XCTAssertFalse(session.isResponding)
+      XCTAssertEqual(session.transcript.map(\.id), liveIDs)
+      let terminalReleased = await gate.terminalReleased
+      XCTAssertFalse(terminalReleased)
+      await gate.finish()
+    }
+
     func testInvalidTerminalToolSnapshotCannotExecuteHostSideEffects() async throws {
       let observed = FoundationToolObservation()
       let runtime = FoundationFixtureRuntime { request in
@@ -252,6 +405,54 @@
     }
   }
 
+  @available(macOS 27, iOS 27, visionOS 27, watchOS 27, *)
+  private struct DirectFoundationModel: FoundationModels.LanguageModel {
+    typealias Executor = DirectFoundationExecutor
+    let gate: DirectFoundationGate
+    var executorConfiguration: String { "direct-native-fixture" }
+    var capabilities: FoundationModels.LanguageModelCapabilities { .init([.reasoning]) }
+  }
+
+  @available(macOS 27, iOS 27, visionOS 27, watchOS 27, *)
+  private struct DirectFoundationExecutor: FoundationModels.LanguageModelExecutor {
+    init(configuration: String) {}
+    func respond(
+      to request: FoundationModels.LanguageModelExecutorGenerationRequest,
+      model: DirectFoundationModel,
+      streamingInto channel: FoundationModels.LanguageModelExecutorGenerationChannel
+    ) async throws {
+      await channel.send(.response(action: .updateMetadata(["fixture": "direct-native"])))
+      await channel.send(
+        .response(
+          action: .updateUsage(
+            input: .init(totalTokenCount: 1, cachedTokenCount: 0),
+            output: .init(totalTokenCount: 0, reasoningTokenCount: 0))))
+      await channel.send(.reasoning(action: .appendText("Thinking", tokenCount: 1)))
+      await channel.send(.response(action: .appendText("Hello", tokenCount: 1)))
+      await model.gate.pauseAfterSends(schemaPresent: request.schema != nil)
+      try Task.checkCancellation()
+    }
+  }
+
+  private actor DirectFoundationGate {
+    let sent: XCTestExpectation
+    private var waiter: CheckedContinuation<Void, Never>?
+    private(set) var released = false
+    private(set) var schemaPresent = false
+    init(sent: XCTestExpectation) { self.sent = sent }
+    func pauseAfterSends(schemaPresent: Bool) async {
+      self.schemaPresent = schemaPresent
+      sent.fulfill()
+      if released { return }
+      await withCheckedContinuation { waiter = $0 }
+    }
+    func release() {
+      released = true
+      waiter?.resume()
+      waiter = nil
+    }
+  }
+
   private struct FoundationFixtureFailure: Error {}
 
   private actor FoundationToolObservation {
@@ -278,6 +479,65 @@
               modelID: request.modelID, providerMetadata: [:])))
         started.fulfill()
       }
+    }
+  }
+
+  private struct FoundationGatedRuntime: ProviderRuntime {
+    let gate: FoundationStreamGate
+    func catalog() async throws -> ProviderCatalog { .init(revision: "test", providers: []) }
+    func authorize(
+      _ operation: AuthorizationOperation, interaction: @escaping AuthorizationInteraction
+    ) async throws -> AuthorizationState {
+      throw FoundationFixtureFailure()
+    }
+    func stream(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderEvent, any Error> {
+      AsyncThrowingStream { continuation in
+        continuation.onTermination = { _ in gate.stopped.fulfill() }
+        Task { await gate.start(request, continuation: continuation) }
+      }
+    }
+  }
+
+  private actor FoundationStreamGate {
+    nonisolated let stopped: XCTestExpectation
+    private var request: ProviderRequest?
+    private var continuation: AsyncThrowingStream<ProviderEvent, any Error>.Continuation?
+    private(set) var terminalReleased = false
+    init(stopped: XCTestExpectation) { self.stopped = stopped }
+    func start(
+      _ request: ProviderRequest,
+      continuation: AsyncThrowingStream<ProviderEvent, any Error>.Continuation
+    ) {
+      self.request = request
+      self.continuation = continuation
+      continuation.yield(
+        .responseStarted(
+          .init(
+            responseID: "gated-response", providerID: request.providerID,
+            modelID: request.modelID, providerMetadata: [:])))
+      continuation.yield(.reasoningDelta("Thinking"))
+      continuation.yield(.textDelta("Hello"))
+    }
+    func finish() {
+      guard let request, let continuation else { return }
+      terminalReleased = true
+      continuation.yield(.textDelta(" world"))
+      continuation.yield(
+        .responseSnapshot(
+          .init(
+            responseID: "gated-response", providerID: request.providerID,
+            protocolID: "test", modelID: request.modelID, responseModelID: nil,
+            content: [
+              .reasoning(.init(text: "Thinking", signature: nil, providerMetadata: [:])),
+              .text(.init(text: "Hello world", signature: nil)),
+            ],
+            usage: .init(
+              inputTokens: 1, outputTokens: 2, reasoningTokens: nil, cachedInputTokens: nil,
+              providerMetadata: [:]),
+            finishReason: .stop, rawFinishReason: nil, timestampMilliseconds: 1)))
+      continuation.yield(.completed(.stop))
+      continuation.finish()
+      self.continuation = nil
     }
   }
 
