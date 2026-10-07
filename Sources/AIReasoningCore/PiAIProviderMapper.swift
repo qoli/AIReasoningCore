@@ -198,6 +198,7 @@ enum PiAIProviderMapper {
   static func options<Content: Generable>(
     for type: Content.Type,
     options: GenerationOptions,
+    contextOptions: ContextOptions = .init(),
     custom: PiAILanguageModel.CustomGenerationOptions
   ) throws -> ProviderGenerationOptions {
     guard options.sampling == nil else {
@@ -206,17 +207,37 @@ enum PiAIProviderMapper {
         "pi-ai-swift cannot represent AnyLanguageModel sampling options"
       )
     }
+    let profileEffort: ProviderReasoningEffort?
+    switch contextOptions.reasoningLevel {
+    case nil: profileEffort = nil
+    case .light: profileEffort = .low
+    case .moderate: profileEffort = .medium
+    case .deep: profileEffort = .high
+    case .custom(let value):
+      guard let parsed = ProviderReasoningEffort(rawValue: value) else {
+        throw AIReasoningCoreError(.unsupportedOperation, "unsupported reasoning level")
+      }
+      profileEffort = parsed
+    }
+
+    let profileToolChoice: PiAIProviderRuntime.JSONValue?
+    switch options.toolCallingMode?.kind {
+    case nil, .allowed: profileToolChoice = nil
+    case .required: profileToolChoice = .string("required")
+    case .disallowed: profileToolChoice = .string("none")
+    }
+
     return ProviderGenerationOptions(
       maximumOutputTokens: options.maximumResponseTokens,
       temperature: options.temperature,
-      reasoningEffort: custom.reasoningEffort,
+      reasoningEffort: custom.reasoningEffort ?? profileEffort,
       responseSchema: type == String.self ? nil : try encodedJSONValue(type.generationSchema),
       providerOptions: custom.providerOptions,
       outputModality: custom.outputModality,
       sessionID: custom.sessionID,
       cacheRetention: custom.cacheRetention,
       serviceTier: custom.serviceTier,
-      toolChoice: custom.toolChoice
+      toolChoice: custom.toolChoice ?? profileToolChoice
     )
   }
 

@@ -3,7 +3,7 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
-## Request-only context projection on back-deployment (2026-10-07)
+## Foundation Models 27 DynamicProfile compatibility (2026-10-08)
 
 SwiftChat's 5ML-87 experiment uses Apple's OS 27
 [`DynamicProfile.historyTransform(_:)`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/dynamicprofile/historytransform(_:))
@@ -13,19 +13,43 @@ a native hosted fixture has observed the transform on Tool continuation, while
 retaining all Tool outputs in the Session archive. This is experimental native
 evidence, not an enabled production context-management policy.
 
-The app currently resolves AnyLanguageModel
-`dfc608d0fdc42f8ca7504fb58c91fe70b70c331f`, which has DynamicInstructions but no
-DynamicProfile or historyTransform. A compatible implementation must mirror
-Apple's request-only, canonical-entry transformation contract. The transitional
-Core driver currently resolves request context before PiAIProviderAdapter appends
-in-flight continuation messages. A transform over stored transcript alone would
-therefore miss the current Tool outputs; parity requires a canonical current-round
-view at that seam. Do not add Host-specific context-file access to the executor,
-flatten Tool history into role/text, or add an app-level Tool loop as a workaround.
+The OS 26 compatibility implementation was prepared as a clean upstream branch
+from huggingface main. Candidate commits `1a8a59e` and `e5c945c` add the Apple
+27-shaped DynamicProfile/session-property surface and repair per-request Tool
+continuations without importing qoli-only history. The maintained qoli branch
+then merged that candidate with all existing fork commits and the independently
+published Foundation Models authority guide. Formal qoli main revision
+`9be89174dae3d3a6f878d00beb123b33aaf47ba9` is the resulting integration; no
+consumer URL changed.
 
-The native experiment does not depend on an unpublished AnyLanguageModel change.
-OS 26 execution of this projection remains unsupported; no compatibility or
-remote dependency acceptance is claimed by its OS 27 receipts.
+The compatibility Session now resolves a Profile before every actual provider
+request, including stream and nonstream Tool continuations. The current Tool
+round is visible to history transforms and callbacks without becoming durable
+early; the producing request's Tool snapshot executes the calls, while the next
+request may change model, instructions, Tools, options and context options.
+Request-local transcript error policy does not leak into later Profiles.
+Callback signatures and `SessionPropertyValues` match the installed Xcode 27
+concurrency and Observation surface where the deployment runtime can express it.
+AnyLanguageModel's built-in providers share one Tool-execution seam and reset
+provider-specific continuation when a Profile selects a different model.
+
+Core consumes the same contract. `SessionCompatibilityDriver` passes canonical
+in-flight entries into Profile resolution, executes callbacks and Tools against
+the producing snapshot, and distinguishes Pi executors by UUID in addition to
+provider/model labels. It retains opaque provider replay only when the same
+executor is selected and the projected transcript contains the current Tool
+round exactly once. A legal projection that removes or reorders that round maps
+the projected transcript without opaque replay instead of failing the Session.
+
+Deterministic source verification passed 667 tests / 70 suites on the clean
+candidate and 674 tests / 71 suites on the qoli integration, with recursive
+format lint, diff checks and generic iOS Simulator builds. Those results do not
+establish Linux, optional local-model backends, a live provider, SwiftChat's
+remote pin, or production context-management acceptance. The native experiment
+remains evidence for the system framework path only; 5ML-120 must validate the
+published compatibility pin through its own production Harness rather than add
+Host-specific context-file access, flatten Tool history, or introduce an app
+Tool loop.
 
 ## OpenAI Completions content order and logical block identity (2026-10-07)
 

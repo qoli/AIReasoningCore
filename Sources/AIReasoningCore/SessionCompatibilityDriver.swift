@@ -6,12 +6,6 @@ import PiAIProviderRuntime
 /// `LanguageModel` contract. This type should disappear when the upstream contract
 /// supplies a Foundation Models 27-style executor seam.
 struct SessionCompatibilityDriver: Sendable {
-  private let adapter: PiAIProviderAdapter
-
-  init(adapter: PiAIProviderAdapter) {
-    self.adapter = adapter
-  }
-
   func respond<Content>(
     within session: LanguageModelSession,
     generating type: Content.Type,
@@ -70,20 +64,40 @@ struct SessionCompatibilityDriver: Sendable {
         "maximumToolIterations must be greater than zero"
       )
     }
-    let generationOptions = try adapter.generationOptions(
-      for: type,
-      options: options,
-      custom: custom
-    )
-
     var transcriptEntries: [Transcript.Entry] = []
     var providerContinuation = PiAIProviderContinuation()
+    var continuationIdentity: PiAIProviderAdapter.Identity?
     var completedUsage = PiAIGenerationUsage.zero
     var toolIterations = 0
 
     while true {
       if onSnapshot != nil { try Task.checkCancellation() }
-      let context = session.resolvedRequestContext()
+      let context = try await session.resolvedRequestContext(
+        including: transcriptEntries,
+        options: options
+      )
+      guard let selectedModel = context.model as? PiAILanguageModel else {
+        throw AIReasoningCoreError(
+          .unsupportedOperation,
+          "a compatibility Tool continuation cannot switch from PiAILanguageModel to another model type"
+        )
+      }
+      let roundAdapter = selectedModel.providerAdapter
+      if let continuationIdentity, continuationIdentity != roundAdapter.identity {
+        providerContinuation = PiAIProviderContinuation()
+      }
+      let roundCustom = context.options[custom: PiAILanguageModel.self] ?? custom
+      let generationOptions = try roundAdapter.generationOptions(
+        for: type,
+        options: context.options,
+        contextOptions: context.contextOptions,
+        custom: roundCustom
+      )
+      providerContinuation = roundAdapter.normalizedContinuation(
+        providerContinuation,
+        for: context.transcript,
+        currentRoundEntries: transcriptEntries
+      )
       var lastSnapshot: LanguageModelSession.ResponseStream<Content>.Snapshot?
 
       func emit(
@@ -116,9 +130,10 @@ struct SessionCompatibilityDriver: Sendable {
         }
       }
 
-      let result = try await adapter.generateRound(
+      let result = try await roundAdapter.generateRound(
         transcript: context.transcript,
         tools: context.tools,
+        currentRoundEntries: transcriptEntries,
         continuation: providerContinuation,
         options: generationOptions,
         onUpdate: updateHandler
@@ -134,12 +149,19 @@ struct SessionCompatibilityDriver: Sendable {
         }
         toolIterations += 1
         transcriptEntries.append(contentsOf: result.entries)
+        try await session.profileDidProduceEntries(
+          result.entries,
+          requestContext: context,
+          currentRoundEntries: transcriptEntries
+        )
         try emit("", entries: transcriptEntries, usage: completedUsage)
 
         let resolution = try await resolve(
           result.toolCalls,
           in: session,
-          using: context.tools
+          using: context.tools,
+          requestContext: context,
+          currentRoundEntries: transcriptEntries
         ) { output in
           transcriptEntries.append(.toolOutput(output))
           try emit("", entries: transcriptEntries, usage: completedUsage)
@@ -155,16 +177,22 @@ struct SessionCompatibilityDriver: Sendable {
             usage: completedUsage.sessionUsage
           )
         }
-        try adapter.continueAfterToolRound(
+        try roundAdapter.continueAfterToolRound(
           result,
           outputs: resolution.outputs,
           continuation: &providerContinuation
         )
+        continuationIdentity = roundAdapter.identity
         continue
       }
 
       let raw = try SessionOutputMapper.generatedContent(result.text, for: type)
       let content = try SessionOutputMapper.content(type, from: raw)
+      try await session.profileDidProduceEntries(
+        result.reasoningEntries,
+        requestContext: context,
+        currentRoundEntries: transcriptEntries + result.reasoningEntries
+      )
       transcriptEntries.append(contentsOf: result.reasoningEntries)
       let sessionUsage = completedUsage.sessionUsage
       if lastSnapshot.map({ Array($0.transcriptEntries) }) != transcriptEntries
@@ -185,7 +213,9 @@ struct SessionCompatibilityDriver: Sendable {
     _ calls: [Transcript.ToolCall],
     in session: LanguageModelSession,
     using tools: [any Tool],
-    onOutput: ((Transcript.ToolOutput) throws -> Void)? = nil
+    requestContext: LanguageModelSession.RequestContext,
+    currentRoundEntries: [Transcript.Entry],
+    onOutput: ((Transcript.ToolOutput) async throws -> Void)? = nil
   ) async throws -> ToolResolution {
     if let delegate = session.toolExecutionDelegate {
       await delegate.didGenerateToolCalls(calls, in: session)
@@ -194,6 +224,11 @@ struct SessionCompatibilityDriver: Sendable {
     var decisions: [ToolExecutionDecision] = []
     decisions.reserveCapacity(calls.count)
     for call in calls {
+      try await session.profileWillExecuteToolCall(
+        call,
+        requestContext: requestContext,
+        currentRoundEntries: currentRoundEntries
+      )
       let decision =
         await session.toolExecutionDelegate?.toolCallDecision(for: call, in: session) ?? .execute
       if case .stop = decision {
@@ -203,6 +238,7 @@ struct SessionCompatibilityDriver: Sendable {
     }
 
     var outputs: [Transcript.ToolOutput] = []
+    var completedOutputEntries: [Transcript.Entry] = []
     for (call, decision) in zip(calls, decisions) {
       try Task.checkCancellation()
       switch decision {
@@ -218,7 +254,14 @@ struct SessionCompatibilityDriver: Sendable {
           segments: segments
         )
         outputs.append(output)
-        try onOutput?(output)
+        completedOutputEntries.append(.toolOutput(output))
+        try await onOutput?(output)
+        try await session.profileDidProduceToolOutput(
+          for: call,
+          output: output,
+          requestContext: requestContext,
+          currentRoundEntries: currentRoundEntries + completedOutputEntries
+        )
         if let delegate = session.toolExecutionDelegate {
           await delegate.didExecuteToolCall(call, output: output, in: session)
         }
@@ -226,22 +269,36 @@ struct SessionCompatibilityDriver: Sendable {
         guard let tool = tools.first(where: { $0.name == call.toolName }) else {
           throw AIReasoningCoreError(.unknownTool, "unknown tool: \(call.toolName)")
         }
+        let segments: [Transcript.Segment]
         do {
-          let output = Transcript.ToolOutput(
-            id: call.id,
-            toolName: call.toolName,
-            segments: try await execute(tool, arguments: call.arguments)
-          )
-          outputs.append(output)
-          try onOutput?(output)
-          if let delegate = session.toolExecutionDelegate {
-            await delegate.didExecuteToolCall(call, output: output, in: session)
+          segments = try await session.withProfileToolExecution(
+            requestContext: requestContext,
+            currentRoundEntries: currentRoundEntries + completedOutputEntries
+          ) {
+            try await execute(tool, arguments: call.arguments)
           }
         } catch {
           if let delegate = session.toolExecutionDelegate {
             await delegate.didFailToolCall(call, error: error, in: session)
           }
           throw LanguageModelSession.ToolCallError(tool: tool, underlyingError: error)
+        }
+        let output = Transcript.ToolOutput(
+          id: call.id,
+          toolName: call.toolName,
+          segments: segments
+        )
+        outputs.append(output)
+        completedOutputEntries.append(.toolOutput(output))
+        try await onOutput?(output)
+        try await session.profileDidProduceToolOutput(
+          for: call,
+          output: output,
+          requestContext: requestContext,
+          currentRoundEntries: currentRoundEntries + completedOutputEntries
+        )
+        if let delegate = session.toolExecutionDelegate {
+          await delegate.didExecuteToolCall(call, output: output, in: session)
         }
       }
     }

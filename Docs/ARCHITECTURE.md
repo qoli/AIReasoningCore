@@ -112,12 +112,20 @@ adapter or `ProviderRuntime` mapping during that migration.
   through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
   Immediately before every provider request, including a continuation after a
-  tool round, Core resolves AnyLanguageModel's immutable request context. The
-  context supplies that request's transient instructions, transcript view and
+  tool round, Core resolves AnyLanguageModel's immutable request context with
+  the canonical in-flight Tool entries. The context supplies that request's
+  transient instructions, projected transcript, selected model, options and
   Tool instances. Calls emitted by the request execute against those exact Tool
   instances; only the following provider request resolves the dynamic body
-  again. In-flight assistant replay and tool outputs are appended to the newly
-  resolved transcript view without persisting dynamic instructions as history.
+  again. Profile lifecycle callbacks and session properties run through this
+  same seam without making pending Tool entries durable ahead of the Session's
+  commit path.
+  Opaque provider continuation is reused only while the same concrete
+  `PiAILanguageModel` executor remains selected and the projected transcript
+  contains the current Tool round exactly once. A model/executor change or a
+  legal transform that removes or reorders that round clears opaque replay and
+  maps the projected canonical transcript instead. Provider/model string labels
+  alone are not runtime identity.
   Mixed text/tool turns retain content order, including text between tool calls.
   They are persisted as adjacent response/toolCalls entries; replay combines
   adjacent assistant entries into one provider message, ending at a prompt,
@@ -141,6 +149,13 @@ adapter or `ProviderRuntime` mapping during that migration.
   history. Adoption does not change the driver/provider ownership above or
   introduce an executor contract; published integration status is tracked in
   `UPSTREAM_GATES.md`.
+- The OS 26 compatibility mirror now supplies Foundation Models 27-shaped
+  DynamicProfile composition, per-request history projection, lifecycle
+  callbacks, session properties, model/options/Tool selection and request-local
+  transcript error policy. AnyLanguageModel's built-in providers and Core's Pi
+  driver both re-evaluate that profile before every actual provider request.
+  This remains a compatibility implementation beneath the public Session; it
+  does not replace Apple's native executor authority or justify a Host loop.
 - Reasoning uses the FM27-shaped `Transcript.Entry.reasoning`
   and `Transcript.Reasoning`, carried in cumulative `transcriptEntries`. Stable
   entry and text-segment IDs identify updates within a provider round; completed

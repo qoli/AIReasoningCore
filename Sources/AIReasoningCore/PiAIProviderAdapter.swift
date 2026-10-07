@@ -8,20 +8,29 @@ import PiAIProviderRuntime
 /// transcript and Tool snapshot, maps one provider round, validates the normalized event
 /// stream, and preserves opaque replay state for a continuation.
 struct PiAIProviderAdapter: Sendable {
+  struct Identity: Sendable, Equatable {
+    let providerID: String
+    let modelID: String
+    let executorID: UUID
+  }
+
   private let runtime: any ProviderRuntime
   private let providerID: String
   private let modelID: String
+  let identity: Identity
   private let onAsset: @Sendable (ProviderAsset) async throws -> Void
 
   init(
     runtime: any ProviderRuntime,
     providerID: String,
     modelID: String,
+    executorID: UUID,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)?
   ) {
     self.runtime = runtime
     self.providerID = providerID
     self.modelID = modelID
+    identity = Identity(providerID: providerID, modelID: modelID, executorID: executorID)
     self.onAsset =
       onAsset ?? { _ in
         throw AIReasoningCoreError(
@@ -34,22 +43,82 @@ struct PiAIProviderAdapter: Sendable {
   func generationOptions<Content: Generable>(
     for type: Content.Type,
     options: GenerationOptions,
+    contextOptions: ContextOptions = .init(),
     custom: PiAILanguageModel.CustomGenerationOptions
   ) throws -> ProviderGenerationOptions {
-    try PiAIProviderMapper.options(for: type, options: options, custom: custom)
+    try PiAIProviderMapper.options(
+      for: type,
+      options: options,
+      contextOptions: contextOptions,
+      custom: custom
+    )
   }
 
   func generateRound(
     transcript: Transcript,
     tools: [any Tool],
+    currentRoundEntries: [Transcript.Entry] = [],
     continuation: PiAIProviderContinuation,
     options: ProviderGenerationOptions,
     onUpdate: ((PiAIProviderRoundUpdate) async throws -> Void)? = nil
   ) async throws -> PiAIProviderRound {
-    let messages = try PiAIProviderMapper.messages(from: transcript) + continuation.messages
+    let messages = try messages(
+      from: transcript,
+      replacing: currentRoundEntries,
+      with: continuation
+    )
     return try await generateRound(
       messages: messages, tools: PiAIProviderMapper.tools(from: tools), options: options,
       onUpdate: onUpdate)
+  }
+
+  func normalizedContinuation(
+    _ continuation: PiAIProviderContinuation,
+    for transcript: Transcript,
+    currentRoundEntries: [Transcript.Entry]
+  ) -> PiAIProviderContinuation {
+    guard !continuation.messages.isEmpty, !currentRoundEntries.isEmpty else {
+      return PiAIProviderContinuation()
+    }
+    let projected = Array(transcript)
+    let count = currentRoundEntries.count
+    let matches = projected.indices.count { start in
+      let end = start + count
+      return end <= projected.count
+        && Array(projected[start..<end]) == currentRoundEntries
+    }
+    return matches == 1 ? continuation : PiAIProviderContinuation()
+  }
+
+  private func messages(
+    from transcript: Transcript,
+    replacing currentRoundEntries: [Transcript.Entry],
+    with continuation: PiAIProviderContinuation
+  ) throws -> [ProviderMessage] {
+    guard !continuation.messages.isEmpty else {
+      return try PiAIProviderMapper.messages(from: transcript)
+    }
+    guard !currentRoundEntries.isEmpty else {
+      return try PiAIProviderMapper.messages(from: transcript)
+    }
+
+    let projected = Array(transcript)
+    let count = currentRoundEntries.count
+    let ranges = projected.indices.compactMap { start -> Range<Int>? in
+      let end = start + count
+      guard end <= projected.count,
+        Array(projected[start..<end]) == currentRoundEntries
+      else { return nil }
+      return start..<end
+    }
+    guard ranges.count == 1, let range = ranges.first else {
+      return try PiAIProviderMapper.messages(from: transcript)
+    }
+    return try PiAIProviderMapper.messages(
+      from: Transcript(entries: projected[..<range.lowerBound])
+    )
+      + continuation.messages
+      + PiAIProviderMapper.messages(from: Transcript(entries: projected[range.upperBound...]))
   }
 
   func generateRound(
