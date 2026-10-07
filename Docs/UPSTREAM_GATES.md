@@ -3,6 +3,30 @@
 These gates distinguish capabilities supplied by the current dependencies from
 remaining contract limitations.
 
+## Request-only context projection on back-deployment (2026-10-07)
+
+SwiftChat's 5ML-87 experiment uses Apple's OS 27
+[`DynamicProfile.historyTransform(_:)`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/dynamicprofile/historytransform(_:))
+to project already-read working context into each model request without modifying
+the full canonical Transcript. Xcode 27.0 (27A266a) includes the public signature;
+a native hosted fixture has observed the transform on Tool continuation, while
+retaining all Tool outputs in the Session archive. This is experimental native
+evidence, not an enabled production context-management policy.
+
+The app currently resolves AnyLanguageModel
+`dfc608d0fdc42f8ca7504fb58c91fe70b70c331f`, which has DynamicInstructions but no
+DynamicProfile or historyTransform. A compatible implementation must mirror
+Apple's request-only, canonical-entry transformation contract. The transitional
+Core driver currently resolves request context before PiAIProviderAdapter appends
+in-flight continuation messages. A transform over stored transcript alone would
+therefore miss the current Tool outputs; parity requires a canonical current-round
+view at that seam. Do not add Host-specific context-file access to the executor,
+flatten Tool history into role/text, or add an app-level Tool loop as a workaround.
+
+The native experiment does not depend on an unpublished AnyLanguageModel change.
+OS 26 execution of this projection remains unsupported; no compatibility or
+remote dependency acceptance is claimed by its OS 27 receipts.
+
 ## OpenAI Completions content order and logical block identity (2026-10-07)
 
 Live SwiftChat oMLX acceptance against Pi `44c079d` found native reasoning
