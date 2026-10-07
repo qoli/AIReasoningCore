@@ -293,6 +293,7 @@ final class PiAILanguageModelTests: XCTestCase {
     )
 
     for streaming in [false, true] {
+      let requestUsage = RequestUsageRecorder()
       let runtime = FakeRuntime { request in
         if request.messages.contains(where: { if case .toolResult = $0 { true } else { false } }) {
           return [
@@ -320,7 +321,9 @@ final class PiAILanguageModelTests: XCTestCase {
         ]
       }
       let session = LanguageModelSession(
-        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+        model: PiAILanguageModel(
+          runtime: runtime, providerID: "test", modelID: "model",
+          onRequestUsage: { requestUsage.append($0) }),
         tools: [EchoTool()]
       )
 
@@ -354,10 +357,19 @@ final class PiAILanguageModelTests: XCTestCase {
       XCTAssertEqual(content, "complete")
       XCTAssertEqual(responseUsage, expected)
       XCTAssertEqual(session.usage, expected)
+      XCTAssertEqual(
+        requestUsage.values,
+        [
+          .init(inputTokens: 16, cachedInputTokens: 4, outputTokens: 3, reasoningTokens: 2),
+          .init(inputTokens: 29, cachedInputTokens: 6, outputTokens: 7, reasoningTokens: 5),
+        ]
+      )
 
       let nextResponse = try await session.respond(to: "Again")
       XCTAssertEqual(nextResponse.usage, secondResponseExpected)
       XCTAssertEqual(session.usage, sessionExpected)
+      XCTAssertEqual(requestUsage.values.last, requestUsage.values[1])
+      XCTAssertEqual(requestUsage.values.count, 3)
     }
   }
 
@@ -1794,6 +1806,17 @@ private actor RequestRecorder {
 
   func record(_ request: ProviderRequest) {
     requests.append(request)
+  }
+}
+
+private final class RequestUsageRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var storage: [PiAIRequestUsage] = []
+
+  var values: [PiAIRequestUsage] { lock.withLock { storage } }
+
+  func append(_ value: PiAIRequestUsage) {
+    lock.withLock { storage.append(value) }
   }
 }
 

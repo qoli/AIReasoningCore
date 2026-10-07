@@ -197,6 +197,11 @@ adapter or `ProviderRuntime` mapping during that migration.
   second session counter. Provider-only cost, reported-total and raw metadata
   fields remain at the provider seam until a consumer demonstrates a stable
   metadata contract.
+  A Host that manages context may supply `PiAILanguageModel.onRequestUsage` to
+  observe the normalized usage of each completed provider request before the
+  Session combines Tool rounds. This content-free callback exposes the request's
+  inclusive input count and output subsets; it is not a compaction trigger and
+  does not replace Session-lifetime usage accounting.
 - AnyLanguageModel currently creates response transcript entries with empty
   asset IDs. Core therefore does not invent an asset reference or persistence
   layer; asset-only responses remain unrepresentable until the upstream contract

@@ -2,6 +2,23 @@ import AnyLanguageModel
 import Foundation
 import PiAIProviderRuntime
 
+/// Usage reported by one provider request, before a Session combines Tool rounds.
+public struct PiAIRequestUsage: Sendable, Equatable {
+  public let inputTokens: Int
+  public let cachedInputTokens: Int
+  public let outputTokens: Int
+  public let reasoningTokens: Int
+
+  public init(
+    inputTokens: Int, cachedInputTokens: Int, outputTokens: Int, reasoningTokens: Int
+  ) {
+    self.inputTokens = inputTokens
+    self.cachedInputTokens = cachedInputTokens
+    self.outputTokens = outputTokens
+    self.reasoningTokens = reasoningTokens
+  }
+}
+
 public struct PiAILanguageModel: LanguageModel {
   public typealias UnavailableReason = Never
 
@@ -46,7 +63,8 @@ public struct PiAILanguageModel: LanguageModel {
     providerID: String,
     modelID: String,
     capabilities: ProviderCapabilities? = nil,
-    onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil
+    onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil,
+    onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)? = nil
   ) {
     let executorID = UUID()
     let adapter = PiAIProviderAdapter(
@@ -54,7 +72,8 @@ public struct PiAILanguageModel: LanguageModel {
       providerID: providerID,
       modelID: modelID,
       executorID: executorID,
-      onAsset: onAsset
+      onAsset: onAsset,
+      onRequestUsage: onRequestUsage
     )
     compatibilityDriver = SessionCompatibilityDriver()
     providerAdapter = adapter

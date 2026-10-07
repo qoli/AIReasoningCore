@@ -19,13 +19,15 @@ struct PiAIProviderAdapter: Sendable {
   private let modelID: String
   let identity: Identity
   private let onAsset: @Sendable (ProviderAsset) async throws -> Void
+  private let onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)?
 
   init(
     runtime: any ProviderRuntime,
     providerID: String,
     modelID: String,
     executorID: UUID,
-    onAsset: (@Sendable (ProviderAsset) async throws -> Void)?
+    onAsset: (@Sendable (ProviderAsset) async throws -> Void)?,
+    onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)?
   ) {
     self.runtime = runtime
     self.providerID = providerID
@@ -38,6 +40,7 @@ struct PiAIProviderAdapter: Sendable {
           "provider emitted an asset but no asset handler was configured"
         )
       }
+    self.onRequestUsage = onRequestUsage
   }
 
   func generationOptions<Content: Generable>(
@@ -134,7 +137,16 @@ struct PiAIProviderAdapter: Sendable {
       tools: tools,
       options: options
     )
-    return try await collect(runtime.stream(request), onUpdate: onUpdate)
+    let result = try await collect(runtime.stream(request), onUpdate: onUpdate)
+    onRequestUsage?(
+      PiAIRequestUsage(
+        inputTokens: result.usage.inputTotal,
+        cachedInputTokens: result.usage.cachedInput,
+        outputTokens: result.usage.outputTotal,
+        reasoningTokens: result.usage.reasoningOutput
+      )
+    )
+    return result
   }
 
   func continueAfterToolRound(
