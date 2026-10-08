@@ -74,6 +74,10 @@ system text block is emitted for such an entry.
 Provider normalized terminal content must preserve upstream logical block
 order. A real OpenAI Completions runtime regression covers reasoning-first
 native text, second-turn replay, Tool continuation and Codable restoration.
+The adapter also enforces the resolved Tool-calling mode after normalization:
+a terminal response is invalid when a Tool is required, and a Tool call is
+invalid when Tool use is disallowed. Provider `toolChoice` is not proof that the
+provider obeyed the Session contract.
 Partial deltas do not yet expose every upstream block identity; metadata-only
 and interleaved-block limitations remain explicit in UPSTREAM_GATES.md.
 
@@ -111,6 +115,8 @@ adapter or `ProviderRuntime` mapping during that migration.
 - `SessionCompatibilityDriver` executes provider tool calls in both response modes
   through the tools already owned
   by `LanguageModelSession`, then returned to the same provider conversation.
+  Compatibility continuations have no default Host-imposed round cap; callers may
+  opt into a positive `maximumToolIterations` policy when their product requires one.
   Immediately before every provider request, including a continuation after a
   tool round, Core resolves AnyLanguageModel's immutable request context with
   the canonical in-flight Tool entries. The context supplies that request's

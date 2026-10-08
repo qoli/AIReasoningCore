@@ -58,7 +58,9 @@ struct SessionCompatibilityDriver: Sendable {
     onSnapshot: ((LanguageModelSession.ResponseStream<Content>.Snapshot) -> Void)?
   ) async throws -> LanguageModelSession.Response<Content>? where Content: Generable {
     let custom = options[custom: PiAILanguageModel.self] ?? .init()
-    guard custom.maximumToolIterations > 0 else {
+    if let maximumToolIterations = custom.maximumToolIterations,
+      maximumToolIterations <= 0
+    {
       throw AIReasoningCoreError(
         .toolIterationLimitExceeded,
         "maximumToolIterations must be greater than zero"
@@ -141,11 +143,13 @@ struct SessionCompatibilityDriver: Sendable {
       completedUsage.accumulate(result.usage)
 
       if !result.toolCalls.isEmpty {
-        guard toolIterations < custom.maximumToolIterations else {
-          throw AIReasoningCoreError(
-            .toolIterationLimitExceeded,
-            "provider exceeded the configured tool iteration limit"
-          )
+        if let maximumToolIterations = custom.maximumToolIterations {
+          guard toolIterations < maximumToolIterations else {
+            throw AIReasoningCoreError(
+              .toolIterationLimitExceeded,
+              "provider exceeded the configured tool iteration limit"
+            )
+          }
         }
         toolIterations += 1
         transcriptEntries.append(contentsOf: result.entries)

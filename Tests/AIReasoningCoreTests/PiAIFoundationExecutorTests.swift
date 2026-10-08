@@ -87,6 +87,52 @@
       XCTAssertEqual(instructions.toolDefinitions.map(\.name), ["echo"])
     }
 
+    func testNativeProviderCannotIgnoreRequiredOrDisallowedToolCallingMode() async throws {
+      let terminalRuntime = FoundationFixtureRuntime { request in
+        fixtureEvents(request, [.text(.init(text: "ignored", signature: nil))])
+      }
+      let required = FoundationModels.LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: terminalRuntime, providerID: "test", modelID: "model",
+          capabilities: capabilities),
+        tools: [FixtureEchoTool()], transcript: .init())
+      do {
+        _ = try await required.respond(
+          to: "Use a Tool",
+          options: .init(toolCallingMode: .required))
+        XCTFail("required Tool mode must reject an ordinary terminal response")
+      } catch {
+        XCTAssertTrue(String(describing: error).contains("required"))
+      }
+
+      let call = ProviderToolCall(
+        id: "forbidden", name: "echo", arguments: .object(["value": .string("no")]))
+      let toolRuntime = FoundationFixtureRuntime { request in
+        fixtureEvents(request, [.toolCall(call)])
+      }
+      let observed = FoundationToolObservation()
+      let disallowed = FoundationModels.LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: toolRuntime, providerID: "test", modelID: "model",
+          capabilities: capabilities),
+        tools: [
+          FixtureEchoTool { value in
+            await observed.record()
+            return value
+          }
+        ], transcript: .init())
+      do {
+        _ = try await disallowed.respond(
+          to: "Do not use a Tool",
+          options: .init(toolCallingMode: .disallowed))
+        XCTFail("disallowed Tool mode must reject provider Tool calls")
+      } catch {
+        XCTAssertTrue(String(describing: error).contains("disallowed"))
+      }
+      let observedCalls = await observed.calls
+      XCTAssertEqual(observedCalls, 0)
+    }
+
     func testCanonicalSessionExecutesImageToolAndPersistsProviderContinuation() async throws {
       let runtime = FoundationFixtureRuntime { request in
         if case .toolResult(let result) = request.messages.last {

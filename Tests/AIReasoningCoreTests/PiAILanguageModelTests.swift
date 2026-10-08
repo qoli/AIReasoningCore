@@ -1088,6 +1088,90 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(response.content, "done")
   }
 
+  func testCompatibilityToolContinuationHasNoArbitraryDefaultRoundLimit() async throws {
+    let requiredRounds = 9
+    let runtime = FakeRuntime { request in
+      let completed = request.messages.reduce(into: 0) { count, message in
+        if case .toolResult = message { count += 1 }
+      }
+      guard completed < requiredRounds else {
+        return responseEvents(for: request, text: "done")
+      }
+      let id = "call-\(completed + 1)"
+      let call = ProviderToolCall(
+        id: id, name: "echo",
+        arguments: .object(["value": .string("round-\(completed + 1)")]))
+      return [
+        .responseStarted(metadata(for: request)),
+        .toolCallStarted(id: id, name: "echo"),
+        .toolCallCompleted(call),
+        .responseSnapshot(
+          responseSnapshot(for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
+        .completed(.toolCalls),
+      ]
+    }
+    let session = LanguageModelSession(
+      model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"),
+      tools: [EchoTool()])
+
+    let response = try await session.respond(to: "Complete every round")
+
+    XCTAssertEqual(response.content, "done")
+    XCTAssertEqual(
+      session.transcript.filter { if case .toolOutput = $0 { true } else { false } }.count,
+      requiredRounds)
+  }
+
+  func testProviderCannotIgnoreRequiredOrDisallowedToolCallingMode() async throws {
+    for streaming in [false, true] {
+      let terminalRuntime = FakeRuntime { request in responseEvents(for: request, text: "ignored") }
+      let required = LanguageModelSession(
+        model: PiAILanguageModel(
+          runtime: terminalRuntime, providerID: "test", modelID: "model"),
+        tools: [EchoTool()])
+      do {
+        let options = GenerationOptions(toolCallingMode: .required)
+        if streaming {
+          _ = try await required.streamResponse(to: "Use a Tool", options: options).collect()
+        } else {
+          _ = try await required.respond(to: "Use a Tool", options: options)
+        }
+        XCTFail("required Tool mode must reject an ordinary terminal response")
+      } catch let error as AIReasoningCoreError {
+        XCTAssertEqual(error.code, .invalidProviderResponse)
+      }
+
+      let call = ProviderToolCall(
+        id: "forbidden", name: "echo", arguments: .object(["value": .string("no")]))
+      let toolRuntime = FakeRuntime { request in
+        [
+          .responseStarted(metadata(for: request)),
+          .toolCallStarted(id: call.id, name: call.name),
+          .toolCallCompleted(call),
+          .responseSnapshot(
+            responseSnapshot(
+              for: request, content: [.toolCall(call)], finishReason: .toolCalls)),
+          .completed(.toolCalls),
+        ]
+      }
+      let disallowed = LanguageModelSession(
+        model: PiAILanguageModel(runtime: toolRuntime, providerID: "test", modelID: "model"),
+        tools: [EchoTool()])
+      do {
+        let options = GenerationOptions(toolCallingMode: .disallowed)
+        if streaming {
+          _ = try await disallowed.streamResponse(to: "Do not use a Tool", options: options)
+            .collect()
+        } else {
+          _ = try await disallowed.respond(to: "Do not use a Tool", options: options)
+        }
+        XCTFail("disallowed Tool mode must reject provider Tool calls")
+      } catch let error as AIReasoningCoreError {
+        XCTAssertEqual(error.code, .invalidProviderResponse)
+      }
+    }
+  }
+
   func testCustomGenerationOptionsMapToProviderRequest() async throws {
     let recorder = RequestRecorder()
     let runtime = FakeRuntime { request in

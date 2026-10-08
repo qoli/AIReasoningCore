@@ -146,7 +146,27 @@ struct PiAIProviderAdapter: Sendable {
         reasoningTokens: result.usage.reasoningOutput
       )
     )
+    try validateToolCallingMode(options.toolChoice, result: result)
     return result
+  }
+
+  private func validateToolCallingMode(
+    _ toolChoice: PiAIProviderRuntime.JSONValue?, result: PiAIProviderRound
+  ) throws {
+    switch toolChoice {
+    case .string("required") where result.toolCalls.isEmpty:
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider returned a terminal response while Tool calling was required"
+      )
+    case .string("none") where !result.toolCalls.isEmpty:
+      throw AIReasoningCoreError(
+        .invalidProviderResponse,
+        "provider returned Tool calls while Tool calling was disallowed"
+      )
+    default:
+      return
+    }
   }
 
   func continueAfterToolRound(

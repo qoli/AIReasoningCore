@@ -25,7 +25,10 @@ public struct PiAILanguageModel: LanguageModel {
   public struct CustomGenerationOptions: AnyLanguageModel.CustomGenerationOptions {
     public var reasoningEffort: ProviderReasoningEffort?
     public var providerOptions: [String: PiAIProviderRuntime.JSONValue]
-    public var maximumToolIterations: Int
+    /// Optional caller-owned safety policy for compatibility Tool continuations.
+    /// `nil` preserves the Foundation Models contract and does not impose an
+    /// arbitrary round limit.
+    public var maximumToolIterations: Int?
     public var outputModality: ProviderOutputModality
     public var sessionID: String?
     public var cacheRetention: ProviderCacheRetention
@@ -35,7 +38,7 @@ public struct PiAILanguageModel: LanguageModel {
     public init(
       reasoningEffort: ProviderReasoningEffort? = nil,
       providerOptions: [String: PiAIProviderRuntime.JSONValue] = [:],
-      maximumToolIterations: Int = 8,
+      maximumToolIterations: Int? = nil,
       outputModality: ProviderOutputModality = .text,
       sessionID: String? = nil,
       cacheRetention: ProviderCacheRetention = .short,
