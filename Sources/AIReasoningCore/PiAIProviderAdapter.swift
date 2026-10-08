@@ -17,6 +17,7 @@ struct PiAIProviderAdapter: Sendable {
   private let runtime: any ProviderRuntime
   private let providerID: String
   private let modelID: String
+  private let requiredToolRecoveryToolName: String?
   let identity: Identity
   private let onAsset: @Sendable (ProviderAsset) async throws -> Void
   private let onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)?
@@ -26,12 +27,14 @@ struct PiAIProviderAdapter: Sendable {
     providerID: String,
     modelID: String,
     executorID: UUID,
+    requiredToolRecoveryToolName: String?,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)?,
     onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)?
   ) {
     self.runtime = runtime
     self.providerID = providerID
     self.modelID = modelID
+    self.requiredToolRecoveryToolName = requiredToolRecoveryToolName
     identity = Identity(providerID: providerID, modelID: modelID, executorID: executorID)
     self.onAsset =
       onAsset ?? { _ in
@@ -137,7 +140,7 @@ struct PiAIProviderAdapter: Sendable {
       tools: tools,
       options: options
     )
-    let result = try await collect(runtime.stream(request), onUpdate: onUpdate)
+    var result = try await collect(runtime.stream(request), onUpdate: onUpdate)
     onRequestUsage?(
       PiAIRequestUsage(
         inputTokens: result.usage.inputTotal,
@@ -146,8 +149,57 @@ struct PiAIProviderAdapter: Sendable {
         reasoningTokens: result.usage.reasoningOutput
       )
     )
+    result = try recoverRequiredToolViolation(
+      options.toolChoice, result: result, enabledTools: tools)
     try validateToolCallingMode(options.toolChoice, result: result)
     return result
+  }
+
+  /// Some OpenAI-compatible runtimes expose Tool definitions but silently treat
+  /// `tool_choice=required` as `auto`. A caller can opt one ordinary Tool into the
+  /// Foundation Models-owned recovery path. The invalid assistant text remains in
+  /// the canonical response and a synthetic call to that Tool lets the Session
+  /// execute the correction and own the next provider round. Without an enabled,
+  /// matching Tool, the contract violation continues to fail explicitly.
+  private func recoverRequiredToolViolation(
+    _ toolChoice: PiAIProviderRuntime.JSONValue?, result: PiAIProviderRound,
+    enabledTools: [ProviderToolDefinition]
+  ) throws -> PiAIProviderRound {
+    guard case .string("required") = toolChoice, result.toolCalls.isEmpty,
+      let requiredToolRecoveryToolName,
+      enabledTools.contains(where: { $0.name == requiredToolRecoveryToolName })
+    else { return result }
+
+    let call = ProviderToolCall(
+      id: "required-tool-recovery-\(UUID().uuidString)",
+      name: requiredToolRecoveryToolName,
+      arguments: .object([:]),
+      providerMetadata: ["ai-reasoning-core.synthetic-required-tool-recovery": .bool(true)])
+    var providerMetadata = result.snapshot.providerMetadata
+    providerMetadata["ai-reasoning-core.synthetic-required-tool-recovery"] = .bool(true)
+    let snapshot = ProviderResponseSnapshot(
+      responseID: result.snapshot.responseID,
+      providerID: result.snapshot.providerID,
+      protocolID: result.snapshot.protocolID,
+      modelID: result.snapshot.modelID,
+      responseModelID: result.snapshot.responseModelID,
+      content: result.snapshot.content + [.toolCall(call)],
+      usage: result.snapshot.usage,
+      finishReason: .toolCalls,
+      rawFinishReason: result.snapshot.rawFinishReason,
+      timestampMilliseconds: result.snapshot.timestampMilliseconds,
+      providerMetadata: providerMetadata)
+    let content = result.content + [.toolCall(call)]
+    let roundID = UUID().uuidString
+    return PiAIProviderRound(
+      text: result.text,
+      toolCalls: [try PiAIProviderMapper.transcriptToolCall(call)],
+      entries: try PiAIProviderMapper.entries(from: content, roundID: roundID),
+      reasoningEntries: try PiAIProviderMapper.reasoningEntries(from: content, roundID: roundID),
+      assistantMessage: try snapshot.replayAssistantMessage(),
+      usage: result.usage,
+      snapshot: snapshot,
+      content: content)
   }
 
   private func validateToolCallingMode(

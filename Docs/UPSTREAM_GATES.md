@@ -5,6 +5,17 @@ remaining contract limitations.
 
 ## Foundation Models 27 DynamicProfile compatibility (2026-10-08)
 
+SwiftChat's production Harness also exposed an OpenAI-compatible runtime that
+advertises Tools but treats `tool_choice=required` as `auto`. Apple's Session has
+no public callback for converting that invalid terminal response into the Meta
+Harness's no-Tool correction turn. Core therefore offers an explicit model-init
+extension: when the Host names an enabled recovery Tool, the adapter retains the
+provider's assistant text and emits a synthetic call to that Tool. The Session
+executes it and remains the sole continuation owner. The default remains strict
+failure, and disallowed Tool mode is never repaired. Remove this extension if the
+provider runtime honors required Tool choice or Apple exposes the equivalent
+recovery contract.
+
 SwiftChat's 5ML-87 experiment uses Apple's OS 27
 [`DynamicProfile.historyTransform(_:)`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/dynamicprofile/historytransform(_:))
 to project already-read working context into each model request without modifying

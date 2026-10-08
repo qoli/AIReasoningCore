@@ -1172,6 +1172,38 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
+  func testExplicitRecoveryToolTurnsRequiredTerminalTextIntoASessionToolRound() async throws {
+    let runtime = FakeRuntime { request in responseEvents(for: request, text: "keep working") }
+    let adapter = PiAIProviderAdapter(
+      runtime: runtime, providerID: "test", modelID: "model", executorID: UUID(),
+      requiredToolRecoveryToolName: "continue_task", onAsset: nil, onRequestUsage: nil)
+    let options = ProviderGenerationOptions(
+      maximumOutputTokens: nil, temperature: nil, reasoningEffort: nil,
+      responseSchema: nil, providerOptions: [:], toolChoice: .string("required"))
+    let recovery = ProviderToolDefinition(
+      name: "continue_task", description: "Continue", inputSchema: .object([:]))
+
+    let round = try await adapter.generateRound(
+      messages: [.user([.text("Use a Tool")])], tools: [recovery], options: options)
+
+    XCTAssertEqual(round.text, "keep working")
+    XCTAssertEqual(round.toolCalls.map(\.toolName), ["continue_task"])
+    XCTAssertEqual(round.snapshot.finishReason, .toolCalls)
+    XCTAssertEqual(
+      round.snapshot.providerMetadata["ai-reasoning-core.synthetic-required-tool-recovery"],
+      .bool(true))
+    XCTAssertTrue(
+      round.entries.contains {
+        if case .response(let response) = $0 {
+          return response.segments.contains {
+            if case .text(let text) = $0 { return text.content == "keep working" }
+            return false
+          }
+        }
+        return false
+      })
+  }
+
   func testCustomGenerationOptionsMapToProviderRequest() async throws {
     let recorder = RequestRecorder()
     let runtime = FakeRuntime { request in

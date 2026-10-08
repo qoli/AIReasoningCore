@@ -77,7 +77,14 @@ native text, second-turn replay, Tool continuation and Codable restoration.
 The adapter also enforces the resolved Tool-calling mode after normalization:
 a terminal response is invalid when a Tool is required, and a Tool call is
 invalid when Tool use is disallowed. Provider `toolChoice` is not proof that the
-provider obeyed the Session contract.
+provider obeyed the Session contract. A Host may explicitly register the name of
+one enabled recovery Tool when constructing `PiAILanguageModel`. Only in that
+opt-in configuration, a terminal response produced while Tool use is required is
+retained as assistant text and paired with a synthetic call to that Tool. The
+framework Session executes the Tool and owns the continuation; Core does not start
+a second provider round. Without the matching enabled Tool, the same response
+continues to fail explicitly. This is a provider-contract repair extension, not
+part of Apple's `LanguageModel` API.
 Partial deltas do not yet expose every upstream block identity; metadata-only
 and interleaved-block limitations remain explicit in UPSTREAM_GATES.md.
 

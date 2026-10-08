@@ -66,6 +66,7 @@ public struct PiAILanguageModel: LanguageModel {
     providerID: String,
     modelID: String,
     capabilities: ProviderCapabilities? = nil,
+    requiredToolRecoveryToolName: String? = nil,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil,
     onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)? = nil
   ) {
@@ -75,6 +76,7 @@ public struct PiAILanguageModel: LanguageModel {
       providerID: providerID,
       modelID: modelID,
       executorID: executorID,
+      requiredToolRecoveryToolName: requiredToolRecoveryToolName,
       onAsset: onAsset,
       onRequestUsage: onRequestUsage
     )
