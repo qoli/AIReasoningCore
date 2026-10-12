@@ -153,6 +153,33 @@ final class PiAIDynamicProfileTests: XCTestCase {
     }
   }
 
+  func testAnthropicRequiredChoiceMapsThroughDynamicProfile() async throws {
+    let observed = expectation(description: "Anthropic request used any Tool choice")
+    let state = ProfileTestState()
+    let runtime = ProfileFakeRuntime { request in
+      XCTAssertEqual(request.options.toolChoice, .string("any"))
+      observed.fulfill()
+      return profileTextEvents(for: request, text: "ignored")
+    }
+    let model = PiAILanguageModel(
+      runtime: runtime,
+      providerID: "provider",
+      modelID: "model",
+      protocolID: "anthropic-messages"
+    )
+    let session = LanguageModelSession(
+      profile: ProfileFixture(state: state, firstModel: model, secondModel: model)
+    )
+
+    do {
+      _ = try await session.respond(to: "Use a Tool")
+      XCTFail("required Tool mode must reject an ordinary terminal response")
+    } catch let error as AIReasoningCoreError {
+      XCTAssertEqual(error.code, .invalidProviderResponse)
+    }
+    await fulfillment(of: [observed], timeout: 2)
+  }
+
   func testProfileCanSwitchPiModelOnlyByStartingANewProviderConversation() async throws {
     for streaming in [false, true] {
       let state = ProfileTestState()

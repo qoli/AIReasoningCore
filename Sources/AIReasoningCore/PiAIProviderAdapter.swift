@@ -11,12 +11,14 @@ struct PiAIProviderAdapter: Sendable {
   struct Identity: Sendable, Equatable {
     let providerID: String
     let modelID: String
+    let protocolID: String?
     let executorID: UUID
   }
 
   private let runtime: any ProviderRuntime
   private let providerID: String
   private let modelID: String
+  private let protocolID: String?
   private let requiredToolRecoveryToolName: String?
   let identity: Identity
   private let onAsset: @Sendable (ProviderAsset) async throws -> Void
@@ -26,6 +28,7 @@ struct PiAIProviderAdapter: Sendable {
     runtime: any ProviderRuntime,
     providerID: String,
     modelID: String,
+    protocolID: String? = nil,
     executorID: UUID,
     requiredToolRecoveryToolName: String?,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)?,
@@ -34,8 +37,10 @@ struct PiAIProviderAdapter: Sendable {
     self.runtime = runtime
     self.providerID = providerID
     self.modelID = modelID
+    self.protocolID = protocolID
     self.requiredToolRecoveryToolName = requiredToolRecoveryToolName
-    identity = Identity(providerID: providerID, modelID: modelID, executorID: executorID)
+    identity = Identity(
+      providerID: providerID, modelID: modelID, protocolID: protocolID, executorID: executorID)
     self.onAsset =
       onAsset ?? { _ in
         throw AIReasoningCoreError(
@@ -132,13 +137,14 @@ struct PiAIProviderAdapter: Sendable {
     options: ProviderGenerationOptions,
     onUpdate: ((PiAIProviderRoundUpdate) async throws -> Void)? = nil
   ) async throws -> PiAIProviderRound {
+    let requestOptions = providerRequestOptions(options)
     let request = ProviderRequest(
       id: UUID().uuidString,
       providerID: providerID,
       modelID: modelID,
       messages: messages,
       tools: tools,
-      options: options
+      options: requestOptions
     )
     var result = try await collect(runtime.stream(request), onUpdate: onUpdate)
     onRequestUsage?(
@@ -153,6 +159,33 @@ struct PiAIProviderAdapter: Sendable {
       options.toolChoice, result: result, enabledTools: tools)
     try validateToolCallingMode(options.toolChoice, result: result)
     return result
+  }
+
+  private func providerRequestOptions(
+    _ options: ProviderGenerationOptions
+  ) -> ProviderGenerationOptions {
+    let toolChoice: PiAIProviderRuntime.JSONValue?
+    if protocolID == "anthropic-messages", options.toolChoice == .string("required") {
+      toolChoice = .string("any")
+    } else {
+      toolChoice = options.toolChoice
+    }
+    return ProviderGenerationOptions(
+      maximumOutputTokens: options.maximumOutputTokens,
+      temperature: options.temperature,
+      reasoningEffort: options.reasoningEffort,
+      reasoningSummary: options.reasoningSummary,
+      responseSchema: options.responseSchema,
+      providerOptions: options.providerOptions,
+      outputModality: options.outputModality,
+      sessionID: options.sessionID,
+      cacheRetention: options.cacheRetention,
+      serviceTier: options.serviceTier,
+      toolChoice: toolChoice,
+      thinkingBudgets: options.thinkingBudgets,
+      textVerbosity: options.textVerbosity,
+      environment: options.environment
+    )
   }
 
   /// Some OpenAI-compatible runtimes expose Tool definitions but silently treat

@@ -1172,6 +1172,61 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
+  func testAnthropicRequiredToolModeUsesAnyWireChoiceWithoutWeakeningValidation() async throws {
+    let transport = AnthropicToolChoiceTransport()
+    let capabilities = ProviderCapabilities(
+      textInput: true, imageInput: false, toolCalling: true,
+      reasoning: false, structuredOutput: false, imageGeneration: false)
+    let runtime = try CustomProviderRuntime(
+      providers: [
+        .init(
+          id: "anthropic-fixture", baseURL: URL(string: "https://fixture.invalid/v1"),
+          api: "anthropic-messages",
+          models: [
+            .init(
+              id: "model", capabilities: capabilities,
+              metadata: [
+                "cost": .object([
+                  "input": .integer(0), "output": .integer(0),
+                  "cacheRead": .integer(0), "cacheWrite": .integer(0),
+                ])
+              ])
+          ])
+      ],
+      credentialStore: InMemoryProviderCredentialStore(credentials: [
+        "anthropic-fixture": .apiKey(.init(key: "synthetic-fixture", metadata: [:]))
+      ]),
+      streamingTransport: transport)
+    let adapter = PiAIProviderAdapter(
+      runtime: runtime, providerID: "anthropic-fixture", modelID: "model",
+      protocolID: "anthropic-messages", executorID: UUID(),
+      requiredToolRecoveryToolName: nil, onAsset: nil, onRequestUsage: nil)
+    let options = ProviderGenerationOptions(
+      maximumOutputTokens: 64, temperature: nil, reasoningEffort: nil,
+      responseSchema: nil, providerOptions: [:], toolChoice: .string("required"))
+
+    do {
+      _ = try await adapter.generateRound(
+        messages: [.user([.text("Use a Tool")])],
+        tools: [
+          .init(
+            name: "echo", description: "Echoes text",
+            inputSchema: .object(["type": .string("object")]))
+        ],
+        options: options)
+      XCTFail("required Tool mode must still reject an ordinary Anthropic response")
+    } catch let error as AIReasoningCoreError {
+      XCTAssertEqual(error.code, .invalidProviderResponse)
+    }
+
+    let capturedBody = await transport.body
+    let body = try XCTUnwrap(capturedBody)
+    let object = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let toolChoice = try XCTUnwrap(object["tool_choice"] as? [String: Any])
+    XCTAssertEqual(toolChoice["type"] as? String, "any")
+  }
+
   func testExplicitRecoveryToolTurnsRequiredTerminalTextIntoASessionToolRound() async throws {
     let runtime = FakeRuntime { request in responseEvents(for: request, text: "keep working") }
     let adapter = PiAIProviderAdapter(
@@ -1922,6 +1977,29 @@ private actor RequestRecorder {
 
   func record(_ request: ProviderRequest) {
     requests.append(request)
+  }
+}
+
+private actor AnthropicToolChoiceTransport: ProviderHTTPStreamingTransport {
+  private(set) var body: Data?
+
+  func stream(_ request: URLRequest) async throws -> ProviderHTTPStreamingResponse {
+    body = request.httpBody
+    let wire =
+      [
+        #"data: {"type":"message_start","message":{"id":"message-1","model":"model","usage":{"input_tokens":1,"output_tokens":0}}}"#,
+        #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+        #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ignored"}}"#,
+        #"data: {"type":"content_block_stop","index":0}"#,
+        #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+        #"data: {"type":"message_stop"}"#,
+      ].joined(separator: "\n\n") + "\n\n"
+    return .init(
+      statusCode: 200, headers: ["content-type": "text/event-stream"],
+      body: AsyncThrowingStream {
+        $0.yield(Data(wire.utf8))
+        $0.finish()
+      })
   }
 }
 

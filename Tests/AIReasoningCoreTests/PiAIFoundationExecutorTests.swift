@@ -89,11 +89,13 @@
 
     func testNativeProviderCannotIgnoreRequiredOrDisallowedToolCallingMode() async throws {
       let terminalRuntime = FoundationFixtureRuntime { request in
-        fixtureEvents(request, [.text(.init(text: "ignored", signature: nil))])
+        XCTAssertEqual(request.options.toolChoice, .string("any"))
+        return fixtureEvents(request, [.text(.init(text: "ignored", signature: nil))])
       }
       let required = FoundationModels.LanguageModelSession(
         model: PiAILanguageModel(
           runtime: terminalRuntime, providerID: "test", modelID: "model",
+          protocolID: "anthropic-messages",
           capabilities: capabilities),
         tools: [FixtureEchoTool()], transcript: .init())
       do {
