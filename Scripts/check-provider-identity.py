@@ -19,6 +19,8 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pi", type=pathlib.Path, required=True)
+    parser.add_argument("--full-tests", action="store_true")
+    parser.add_argument("--ios-build", action="store_true")
     args = parser.parse_args()
     core = pathlib.Path(__file__).resolve().parents[1]
     repo = args.pi.resolve()
@@ -35,7 +37,10 @@ def main():
         shutil.copyfile(core / "Package.resolved", root / "Package.resolved")
         shutil.copytree(core / "Sources", root / "Sources")
         tests = root / "Tests/AIReasoningCoreTests"
-        tests.mkdir(parents=True)
+        if args.full_tests:
+            shutil.copytree(core / "Tests/AIReasoningCoreTests", tests)
+        else:
+            tests.mkdir(parents=True)
         shutil.copyfile(
             core / "IntegrationTests/ProviderIdentity/ConsumerResponseIdentityTests.swift",
             tests / "ConsumerResponseIdentityTests.swift",
@@ -44,10 +49,17 @@ def main():
         environment["PI_IDENTITY_FIXTURE_PATH"] = str(
             repo / "Fixtures/Differential/Cases/response-rich.json"
         )
+        command = ["swift", "test", "--skip-update", "--package-path", str(root),
+                   "--scratch-path", str(core / ".build/consumer-identity")]
+        if not args.full_tests:
+            command += ["--filter", "ConsumerResponseIdentityTests"]
+        result = subprocess.run(command, env=environment).returncode
+        if result or not args.ios_build:
+            return result
         return subprocess.run(
-            ["swift", "test", "--skip-update", "--package-path", str(root),
-             "--scratch-path", str(core / ".build/consumer-identity"),
-             "--filter", "ConsumerResponseIdentityTests"],
+            ["xcodebuild", "-scheme", "AIReasoningCore", "-destination",
+             "generic/platform=iOS Simulator", "-derivedDataPath",
+             str(core / ".build/consumer-identity-ios"), "build"], cwd=root,
             env=environment,
         ).returncode
 

@@ -6,6 +6,28 @@ import XCTest
 @testable import AIReasoningCore
 
 final class PiAILanguageModelTests: XCTestCase {
+  func testProviderErrorFinishIsRejected() {
+    XCTAssertThrowsError(try PiAIProviderMapper.validateFinish(.error)) { error in
+      XCTAssertEqual((error as? AIReasoningCoreError)?.code, .invalidProviderResponse)
+    }
+  }
+
+  func testOrderedToolSchemaMaterializesRootWithoutReorderingProperties() throws {
+    let schema = try PiAIProviderRuntime.JSONValue(
+      jsonData: Data(
+        ##"{"$ref":"#/$defs/Arguments","$defs":{"Arguments":{"type":"object","properties":{"zeta":{"type":"object","properties":{"zulu":{"type":"string"},"beta":{"type":"integer"}}},"alpha":{"type":"number"}}}}}"##
+          .utf8))
+    let mapped = try PiAIProviderMapper.toolInputSchema(schema)
+    let root = try XCTUnwrap(mapped.objectValue)
+    XCTAssertNil(root["$ref"])
+    XCTAssertNotNil(root["$defs"])
+    let properties = try XCTUnwrap(root["properties"])
+    XCTAssertEqual(properties.objectPropertyNames, ["zeta", "alpha"])
+    XCTAssertEqual(
+      properties.objectValue?["zeta"]?.objectValue?["properties"]?.objectPropertyNames,
+      ["zulu", "beta"])
+  }
+
   func testLegacyTranscriptOptionsRestoreAndContinueInBothModes() async throws {
     // Frozen pre-0.16 Codable shape, rather than JSON produced by the candidate encoder.
     // Custom options already lacked a decoder registry and remain absent after restore.
@@ -672,9 +694,9 @@ final class PiAILanguageModelTests: XCTestCase {
         ##"{"$ref":"#/$defs/Arguments","$defs":{"Arguments":{"type":"object","properties":{"location":{"$ref":"#/$defs/Location"}},"required":["location"]},"Location":{"type":"object","properties":{"latitude":{"type":"number"}},"required":["latitude"]}}}"##
           .utf8))
     let runtime = FakeRuntime { request in
-      guard case .object(let root) = request.tools.first?.inputSchema,
-        case .object(let properties) = root["properties"],
-        case .object(let definitions) = root["$defs"]
+      guard let root = request.tools.first?.inputSchema.objectValue,
+        let properties = root["properties"]?.objectValue,
+        let definitions = root["$defs"]?.objectValue
       else { throw TestFailure.missingToolResults }
       XCTAssertNil(root["$ref"])
       XCTAssertEqual(root["type"], .string("object"))
@@ -1987,12 +2009,16 @@ private actor AnthropicToolChoiceTransport: ProviderHTTPStreamingTransport {
     body = request.httpBody
     let wire =
       [
-        #"data: {"type":"message_start","message":{"id":"message-1","model":"model","usage":{"input_tokens":1,"output_tokens":0}}}"#,
-        #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-        #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ignored"}}"#,
-        #"data: {"type":"content_block_stop","index":0}"#,
-        #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
-        #"data: {"type":"message_stop"}"#,
+        "event: message_start\n"
+          + #"data: {"type":"message_start","message":{"id":"message-1","model":"model","usage":{"input_tokens":1,"output_tokens":0}}}"#,
+        "event: content_block_start\n"
+          + #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+        "event: content_block_delta\n"
+          + #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ignored"}}"#,
+        "event: content_block_stop\n" + #"data: {"type":"content_block_stop","index":0}"#,
+        "event: message_delta\n"
+          + #"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}"#,
+        "event: message_stop\n" + #"data: {"type":"message_stop"}"#,
       ].joined(separator: "\n\n") + "\n\n"
     return .init(
       statusCode: 200, headers: ["content-type": "text/event-stream"],

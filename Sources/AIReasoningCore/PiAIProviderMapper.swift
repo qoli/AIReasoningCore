@@ -166,7 +166,13 @@ enum PiAIProviderMapper {
   static func toolInputSchema<Schema: Encodable>(
     _ schema: Schema
   ) throws -> PiAIProviderRuntime.JSONValue {
-    guard case .object(var root) = try encodedJSONValue(schema) else {
+    try toolInputSchema(encodedJSONValue(schema))
+  }
+
+  static func toolInputSchema(
+    _ schema: PiAIProviderRuntime.JSONValue
+  ) throws -> PiAIProviderRuntime.JSONValue {
+    guard var root = schema.objectValue else {
       throw AIReasoningCoreError(.unsupportedOperation, "tool input schema must be an object")
     }
     let definitions = root["$defs"]
@@ -175,8 +181,8 @@ enum PiAIProviderMapper {
       guard case .string(let path) = reference,
         path.hasPrefix("#/$defs/"),
         visited.insert(path).inserted,
-        case .object(let entries) = definitions,
-        case .object(let resolved) = entries[String(path.dropFirst("#/$defs/".count))]
+        let entries = definitions?.objectValue,
+        let resolved = entries[String(path.dropFirst("#/$defs/".count))]?.objectValue
       else {
         throw AIReasoningCoreError(
           .unsupportedOperation,
@@ -277,6 +283,8 @@ enum PiAIProviderMapper {
       )
     case .cancelled:
       throw CancellationError()
+    case .error:
+      throw AIReasoningCoreError(.invalidProviderResponse, "provider stopped because of an error")
     }
   }
 
@@ -345,9 +353,6 @@ enum PiAIProviderMapper {
   private static func encodedJSONValue<T: Encodable>(
     _ value: T
   ) throws -> PiAIProviderRuntime.JSONValue {
-    try JSONDecoder().decode(
-      PiAIProviderRuntime.JSONValue.self,
-      from: JSONEncoder().encode(value)
-    )
+    try PiAIProviderRuntime.JSONValue(jsonData: JSONEncoder().encode(value))
   }
 }

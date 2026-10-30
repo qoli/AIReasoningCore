@@ -257,8 +257,8 @@
     func testCanonicalRequestMapsEnabledSchemaReasoningAndUsage() async throws {
       let runtime = FoundationFixtureRuntime { request in
         XCTAssertEqual(request.tools.map(\.name), ["echo"])
-        guard case .object(let schema) = request.tools[0].inputSchema,
-          case .object(let properties) = schema["properties"]
+        guard let schema = request.tools[0].inputSchema.objectValue,
+          let properties = schema["properties"]?.objectValue
         else {
           throw FoundationFixtureFailure()
         }
