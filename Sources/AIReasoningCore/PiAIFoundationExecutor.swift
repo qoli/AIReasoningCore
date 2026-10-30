@@ -38,7 +38,7 @@
           },
           options: FoundationProviderMapper.options(request)
         ) { update in
-          await emitter.update(update.content)
+          try await emitter.update(update.content)
         }
         try await emitter.finish(round)
       }
@@ -281,7 +281,7 @@
       self.channel = channel
     }
 
-    func update(_ content: [ProviderAssistantContent]) async {
+    func update(_ content: [ProviderAssistantContent]) async throws {
       for (index, item) in content.enumerated() {
         let id = "\(roundID):\(index)"
         switch item {
@@ -310,6 +310,9 @@
           // Tool side effects must wait for the validated terminal snapshot.
           // Later content stays behind this call to preserve assistant ordering.
           return
+        default:
+          throw AIReasoningCoreError(
+            .invalidProviderResponse, "assistant response contains input-only content")
         }
       }
     }
@@ -384,6 +387,9 @@
               action: .toolCall(
                 id: call.id,
                 name: call.name, action: .appendArguments(json, tokenCount: 0))))
+        default:
+          throw AIReasoningCoreError(
+            .invalidProviderResponse, "assistant response contains input-only content")
         }
       }
     }

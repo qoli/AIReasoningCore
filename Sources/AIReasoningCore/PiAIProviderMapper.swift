@@ -72,6 +72,9 @@ enum PiAIProviderMapper {
         } else {
           entries.append(.toolCalls(.init([mapped])))
         }
+      default:
+        throw AIReasoningCoreError(
+          .invalidProviderResponse, "assistant response contains input-only content")
       }
     }
     return entries

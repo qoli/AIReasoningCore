@@ -2118,6 +2118,8 @@ private func responseSnapshot(
         return .reasoning(reasoning)
       case .toolCall(let call):
         return .toolCall(call)
+      default:
+        preconditionFailure("Input-only content cannot be used as a response fixture")
       }
     },
     usage: usage,
