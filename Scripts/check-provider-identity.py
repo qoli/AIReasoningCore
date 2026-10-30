@@ -49,6 +49,9 @@ def main():
         environment["PI_IDENTITY_FIXTURE_PATH"] = str(
             repo / "Fixtures/Differential/Cases/response-rich.json"
         )
+        environment["PI_RESPONSE_EVENT_FIXTURE_PATH"] = str(
+            repo / "Fixtures/OpenAIRequestBranches/Cases/response-event-branches.json"
+        )
         command = ["swift", "test", "--skip-update", "--package-path", str(root),
                    "--scratch-path", str(core / ".build/consumer-identity")]
         if not args.full_tests:

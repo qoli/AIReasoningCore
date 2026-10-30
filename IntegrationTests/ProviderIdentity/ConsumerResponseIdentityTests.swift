@@ -5,6 +5,41 @@ import PiAIProviderRuntime
 import XCTest
 
 final class ConsumerResponseIdentityTests: XCTestCase {
+  func testNativeBlockLifecycleWithoutResponseStartedIsAcceptedInBothModes() async throws {
+    let path = try XCTUnwrap(ProcessInfo.processInfo.environment["PI_RESPONSE_EVENT_FIXTURE_PATH"])
+    let document = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: path)))
+        as? [String: Any])
+    let cases = try XCTUnwrap(
+      document["responsesBlockLifecycleEvents"] as? [String: [[String: Any]]])
+    XCTAssertEqual(cases.count, 5)
+    for (name, events) in cases {
+      let wire = try events.map { event in
+        "data: "
+          + String(decoding: try JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+          + "\n\n"
+      }.joined()
+      let fixture = IdentityFixture(
+        caseID: name, protocolID: "openai-responses", providerID: "openai",
+        modelID: "gpt-model", baseURL: URL(string: "https://fixture.invalid/v1")!,
+        decoderInput: .init(
+          status: 200, headers: ["content-type": "text/event-stream"],
+          chunksBase64: [Data(wire.utf8).base64EncodedString()]))
+      for streaming in [false, true] {
+        let runtime = try identityRuntime(fixture)
+        let session = LanguageModelSession(
+          model: PiAILanguageModel(
+            runtime: runtime, providerID: fixture.providerID,
+            modelID: fixture.modelID))
+        let response =
+          try await streaming
+          ? session.streamResponse(to: "Hello").collect() : session.respond(to: "Hello")
+        XCTAssertEqual(
+          response.content, name == "interleaved-reused-output-index" ? "first" : "answer", name)
+      }
+    }
+  }
+
   func testWireAliasIsAcceptedByCoreInBothModes() async throws {
     let fixture = try identityFixture()
     for streaming in [false, true] {

@@ -282,6 +282,7 @@ struct PiAIProviderAdapter: Sendable {
     var completedCallIDs = Set<String>()
     var completed = false
     var started = false
+    var usesIndexedBlocks = false
     var reportedUsage = ProviderUsageAccumulator()
     var finishReason: ProviderFinishReason?
     var terminalSnapshot: ProviderResponseSnapshot?
@@ -294,17 +295,6 @@ struct PiAIProviderAdapter: Sendable {
           "provider emitted an event after completion"
         )
       }
-      if !started {
-        guard case .responseStarted(let metadata) = event else {
-          throw AIReasoningCoreError(
-            .invalidProviderResponse,
-            "the first provider event must be responseStarted"
-          )
-        }
-        try validate(metadata)
-        started = true
-        continue
-      }
       if terminalSnapshot != nil {
         guard case .completed = event else {
           throw AIReasoningCoreError(
@@ -314,12 +304,47 @@ struct PiAIProviderAdapter: Sendable {
         }
       }
       switch event {
-      case .responseStarted:
-        throw AIReasoningCoreError(
-          .invalidProviderResponse,
-          "provider emitted responseStarted more than once"
-        )
+      case .contentBlock(let block):
+        let value: ProviderAssistantContent
+        switch block.content {
+        case .text(let text): value = .signedText(text)
+        case .reasoning(let reasoning): value = .reasoning(reasoning)
+        case .toolCall, .asset: continue
+        }
+        usesIndexedBlocks = true
+        guard block.index >= 0, block.index <= content.count else {
+          throw AIReasoningCoreError(
+            .invalidProviderResponse, "provider content block index is out of sequence")
+        }
+        if block.index == content.count {
+          content.append(value)
+        } else {
+          content[block.index] = value
+        }
+        text = content.compactMap { item -> String? in
+          switch item {
+          case .text(let value): value
+          case .signedText(let value): value.text
+          default: nil
+          }
+        }.joined()
+        if block.update != .started {
+          try await onUpdate?(
+            PiAIProviderRoundUpdate(
+              text: text,
+              reasoningEntries: PiAIProviderMapper.reasoningEntries(
+                from: content, roundID: roundID),
+              usage: reportedUsage.value, content: content))
+        }
+      case .responseStarted(let metadata):
+        guard !started else {
+          throw AIReasoningCoreError(
+            .invalidProviderResponse, "provider emitted responseStarted more than once")
+        }
+        try validate(metadata)
+        started = true
       case .textDelta(let delta):
+        guard !usesIndexedBlocks else { continue }
         text += delta
         if case .text(let previous) = content.last {
           content[content.count - 1] = .text(previous + delta)
@@ -376,6 +401,7 @@ struct PiAIProviderAdapter: Sendable {
       case .asset(let asset):
         try await onAsset(asset)
       case .reasoningDelta(let delta):
+        guard !usesIndexedBlocks else { continue }
         guard !delta.isEmpty else { continue }
         if let index = reasoningIndex, case .reasoning(let previous) = content[index] {
           content[index] = .reasoning(
@@ -421,6 +447,20 @@ struct PiAIProviderAdapter: Sendable {
         }
       case .responseSnapshot(let snapshot):
         try validate(snapshot)
+        if !started, content.isEmpty, openCalls.isEmpty {
+          content = snapshot.content.compactMap {
+            switch $0 {
+            case .text(let value): .signedText(value)
+            case .reasoning(let value): .reasoning(value)
+            case .toolCall(let value): .toolCall(value)
+            case .asset: nil
+            }
+          }
+          text = snapshot.content.compactMap { item -> String? in
+            guard case .text(let value) = item else { return nil }
+            return value.text
+          }.joined()
+        }
         reportedUsage.merge(snapshot.usage)
         terminalSnapshot = snapshot
       case .completed(let reason):

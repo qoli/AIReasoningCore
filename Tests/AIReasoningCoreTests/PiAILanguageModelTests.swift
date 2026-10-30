@@ -6,6 +6,33 @@ import XCTest
 @testable import AIReasoningCore
 
 final class PiAILanguageModelTests: XCTestCase {
+  func testSnapshotWithoutStartStillValidatesIdentityInBothModes() async throws {
+    for wrongIdentity in [false, true] {
+      for streaming in [false, true] {
+        let runtime = FakeRuntime { request in
+          [
+            .responseSnapshot(
+              responseSnapshot(
+                for: request, content: [.text("answer")], finishReason: .stop,
+                modelID: wrongIdentity ? "wrong-model" : nil)), .completed(.stop),
+          ]
+        }
+        let session = LanguageModelSession(
+          model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
+        do {
+          let response =
+            try await streaming
+            ? session.streamResponse(to: "Hello").collect() : session.respond(to: "Hello")
+          XCTAssertFalse(wrongIdentity)
+          XCTAssertEqual(response.content, "answer")
+        } catch let error as AIReasoningCoreError {
+          XCTAssertTrue(wrongIdentity)
+          XCTAssertEqual(error.code, .invalidProviderResponse)
+        }
+      }
+    }
+  }
+
   func testProviderErrorFinishIsRejected() {
     XCTAssertThrowsError(try PiAIProviderMapper.validateFinish(.error)) { error in
       XCTAssertEqual((error as? AIReasoningCoreError)?.code, .invalidProviderResponse)
