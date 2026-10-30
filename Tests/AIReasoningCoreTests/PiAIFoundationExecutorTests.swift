@@ -735,6 +735,7 @@
           return
             "replay(\(value.content.compactMap { if case .toolCall(let call) = $0 { call.id } else { nil } }.joined(separator: ",")))"
         case .toolResult(let value): return "output(\(value.toolCallID))"
+        default: return "provider-system"
         }
       }
       print("Canonical fixture request: \(shape.joined(separator: " → "))")
