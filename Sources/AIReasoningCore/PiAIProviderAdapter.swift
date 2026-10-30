@@ -305,7 +305,7 @@ struct PiAIProviderAdapter: Sendable {
       }
       switch event {
       case .contentBlock(let block):
-        let value: ProviderAssistantContent
+        var value: ProviderAssistantContent
         switch block.content {
         case .text(let text): value = .signedText(text)
         case .reasoning(let reasoning): value = .reasoning(reasoning)
@@ -315,6 +315,21 @@ struct PiAIProviderAdapter: Sendable {
         guard block.index >= 0, block.index <= content.count else {
           throw AIReasoningCoreError(
             .invalidProviderResponse, "provider content block index is out of sequence")
+        }
+        if case .delta(let delta) = block.update, block.index < content.count {
+          switch (content[block.index], block.content) {
+          case (.signedText(let previous), .text(let incoming)):
+            value = .signedText(
+              .init(
+                text: previous.text + delta, signature: incoming.signature,
+                phase: incoming.phase, providerMetadata: incoming.providerMetadata))
+          case (.reasoning(let previous), .reasoning(let incoming)):
+            value = .reasoning(
+              .init(
+                text: previous.text + delta, signature: incoming.signature,
+                isRedacted: incoming.isRedacted, providerMetadata: incoming.providerMetadata))
+          default: break
+          }
         }
         if block.index == content.count {
           content.append(value)
