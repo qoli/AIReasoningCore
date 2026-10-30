@@ -1,10 +1,64 @@
-import AIReasoningCore
 import AnyLanguageModel
 import Foundation
 import PiAIProviderRuntime
 import XCTest
 
+@testable import AIReasoningCore
+
 final class ConsumerResponseIdentityTests: XCTestCase {
+  func testNativeCompletionsTextAndToolBlocksAreAccepted() async throws {
+    let path = try XCTUnwrap(ProcessInfo.processInfo.environment["PI_RESPONSE_EVENT_FIXTURE_PATH"])
+    let document = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: path)))
+        as? [String: Any])
+    let cases = try XCTUnwrap(document["completionBlockLifecycleCases"] as? [String: [String: Any]])
+    for name in [
+      "text-only", "interleaved-signature-stays-with-first-field", "tool-before-text",
+      "no-finish-compatible",
+    ] {
+      let spec = try XCTUnwrap(cases[name])
+      let chunks = try XCTUnwrap(spec["chunks"] as? [[String: Any]])
+      let wire =
+        try chunks.map {
+          "data: " + String(decoding: try JSONSerialization.data(withJSONObject: $0), as: UTF8.self)
+            + "\n\n"
+        }.joined() + "data: [DONE]\n\n"
+      let fixture = IdentityFixture(
+        caseID: name, protocolID: "openai-completions", providerID: "openai",
+        modelID: "requested-model", baseURL: URL(string: "https://fixture.invalid/v1")!,
+        decoderInput: .init(
+          status: 200, headers: ["content-type": "text/event-stream"],
+          chunksBase64: [Data(wire.utf8).base64EncodedString()]))
+      let runtime = try identityRuntime(
+        fixture,
+        metadata: [
+          "compat": .object([
+            "supportsFinishReason": .bool(spec["supportsFinishReason"] as? Bool ?? true)
+          ])
+        ])
+      let adapter = PiAIProviderAdapter(
+        runtime: runtime, providerID: fixture.providerID, modelID: fixture.modelID,
+        protocolID: fixture.protocolID, executorID: UUID(), requiredToolRecoveryToolName: nil,
+        onAsset: nil, onRequestUsage: nil)
+      var updates: [String] = []
+      let round = try await adapter.generateRound(
+        messages: [.user([.text("Hello")])],
+        tools: [
+          .init(
+            name: "sample_tool", description: "Fixture tool",
+            inputSchema: .object(["type": .string("object")]))
+        ],
+        options: .init(
+          maximumOutputTokens: 64, temperature: nil, reasoningEffort: nil, responseSchema: nil,
+          providerOptions: [:]),
+        onUpdate: { updates.append($0.text) })
+      XCTAssertEqual(
+        round.text, name == "interleaved-signature-stays-with-first-field" ? "AB" : "answer", name)
+      XCTAssertEqual(round.toolCalls.count, name == "tool-before-text" ? 1 : 0, name)
+      XCTAssertEqual(updates.last, round.text, name)
+    }
+  }
+
   func testNativeBlockLifecycleWithoutResponseStartedIsAcceptedInBothModes() async throws {
     let path = try XCTUnwrap(ProcessInfo.processInfo.environment["PI_RESPONSE_EVENT_FIXTURE_PATH"])
     let document = try XCTUnwrap(
@@ -106,7 +160,9 @@ private func identityFixture() throws -> IdentityFixture {
     IdentityFixture.self, from: JSONSerialization.data(withJSONObject: selected))
 }
 
-private func identityRuntime(_ fixture: IdentityFixture) throws -> CustomProviderRuntime {
+private func identityRuntime(
+  _ fixture: IdentityFixture, metadata: [String: PiAIProviderRuntime.JSONValue] = [:]
+) throws -> CustomProviderRuntime {
   let chunks = try fixture.decoderInput.chunksBase64.map { try XCTUnwrap(Data(base64Encoded: $0)) }
   return try CustomProviderRuntime(
     providers: [
@@ -116,14 +172,15 @@ private func identityRuntime(_ fixture: IdentityFixture) throws -> CustomProvide
           CustomProviderModel(
             id: fixture.modelID,
             capabilities: ProviderCapabilities(
-              textInput: true, imageInput: false, toolCalling: false,
+              textInput: true, imageInput: false, toolCalling: true,
               reasoning: false, structuredOutput: false, imageGeneration: false),
-            metadata: [
-              "cost": .object([
-                "input": .integer(0), "output": .integer(0),
-                "cacheRead": .integer(0), "cacheWrite": .integer(0),
-              ])
-            ])
+            metadata: metadata.merging(
+              [
+                "cost": .object([
+                  "input": .integer(0), "output": .integer(0),
+                  "cacheRead": .integer(0), "cacheWrite": .integer(0),
+                ])
+              ], uniquingKeysWith: { configured, _ in configured }))
         ])
     ],
     credentialStore: InMemoryProviderCredentialStore(credentials: [
