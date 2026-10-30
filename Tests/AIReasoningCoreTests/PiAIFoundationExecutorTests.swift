@@ -372,11 +372,17 @@
 
     private static func observeLiveTranscript(
       _ session: FoundationModels.LanguageModelSession,
-      visible: XCTestExpectation
+      visible: XCTestExpectation,
+      ready: XCTestExpectation
     ) -> Task<[String], Never> {
       Task {
         let observations = Observations { session.transcript }
+        var subscribed = false
         for await transcript in observations {
+          if !subscribed {
+            subscribed = true
+            ready.fulfill()
+          }
           if Self.hasLiveTextAndReasoning(transcript) {
             visible.fulfill()
             return transcript.map(\.id)
@@ -408,13 +414,15 @@
 
     func testCanonicalStreamObservesTextAndReasoningBeforeProviderTerminal() async throws {
       let visible = expectation(description: "Canonical transcript observation before terminal")
+      let ready = expectation(description: "Canonical transcript observation subscribed")
       let stopped = expectation(description: "Provider stream finished")
       let gate = FoundationStreamGate(stopped: stopped)
       let session = FoundationModels.LanguageModelSession(
         model: PiAILanguageModel(
           runtime: FoundationGatedRuntime(gate: gate),
           providerID: "test", modelID: "model", capabilities: capabilities))
-      let observer = Self.observeLiveTranscript(session, visible: visible)
+      let observer = Self.observeLiveTranscript(session, visible: visible, ready: ready)
+      await fulfillment(of: [ready], timeout: 2)
       let consumer = Task { () throws -> (String, Int) in
         var content = ""
         var snapshots = 0
@@ -445,6 +453,7 @@
 
     func testCanonicalStreamCancellationAfterObservedLiveTranscriptDrainsProvider() async throws {
       let visible = expectation(description: "Canonical live transcript before cancellation")
+      let ready = expectation(description: "Canonical cancellation observation subscribed")
       let stopped = expectation(description: "Provider stream cancelled")
       let gate = FoundationStreamGate(stopped: stopped)
       let session = FoundationModels.LanguageModelSession(
@@ -452,7 +461,8 @@
           runtime: FoundationGatedRuntime(gate: gate),
           providerID: "test", modelID: "model", capabilities: capabilities))
       session.transcriptErrorHandlingPolicy = .preserveTranscript
-      let observer = Self.observeLiveTranscript(session, visible: visible)
+      let observer = Self.observeLiveTranscript(session, visible: visible, ready: ready)
+      await fulfillment(of: [ready], timeout: 2)
       let consumer = Task {
         for try await _ in session.streamResponse(to: "Cancel a live response") {}
       }
