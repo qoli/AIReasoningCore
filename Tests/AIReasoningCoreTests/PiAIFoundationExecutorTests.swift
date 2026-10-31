@@ -375,20 +375,24 @@
       visible: XCTestExpectation,
       ready: XCTestExpectation
     ) -> Task<[String], Never> {
-      Task {
-        let observations = Observations { session.transcript }
-        var subscribed = false
-        for await transcript in observations {
-          if !subscribed {
-            subscribed = true
-            ready.fulfill()
-          }
+      Task { @MainActor in
+        let (updates, continuation) = AsyncStream<[String]>.makeStream()
+        let tracking = withContinuousObservation(options: [.didSet]) { event in
+          let transcript = session.transcript
+          if event.kind == .initial { ready.fulfill() }
           if Self.hasLiveTextAndReasoning(transcript) {
-            visible.fulfill()
-            return transcript.map(\.id)
+            continuation.yield(transcript.map(\.id))
+            continuation.finish()
+            event.cancel()
           }
         }
-        return []
+        var result: [String] = []
+        for await ids in updates {
+          result = ids
+          visible.fulfill()
+        }
+        tracking.cancel()
+        return result
       }
     }
 
