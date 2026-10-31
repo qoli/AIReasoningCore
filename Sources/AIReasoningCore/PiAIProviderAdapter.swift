@@ -165,7 +165,10 @@ struct PiAIProviderAdapter: Sendable {
     _ options: ProviderGenerationOptions
   ) -> ProviderGenerationOptions {
     let toolChoice: PiAIProviderRuntime.JSONValue?
-    if protocolID == "anthropic-messages", options.toolChoice == .string("required") {
+    if options.toolChoice == .string("required"),
+      protocolID == "anthropic-messages" || protocolID == "google-generative-ai"
+        || protocolID == "google-vertex"
+    {
       toolChoice = .string("any")
     } else {
       toolChoice = options.toolChoice

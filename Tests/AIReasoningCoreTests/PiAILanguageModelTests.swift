@@ -1276,6 +1276,57 @@ final class PiAILanguageModelTests: XCTestCase {
     XCTAssertEqual(toolChoice["type"] as? String, "any")
   }
 
+  func testGoogleRequiredToolModeUsesAnyWireChoiceWithoutWeakeningValidation() async throws {
+    for api in ["google-generative-ai", "google-vertex"] {
+      let transport = GoogleToolChoiceTransport()
+      let runtime = try CustomProviderRuntime(
+        providers: [
+          .init(
+            id: "google-fixture", baseURL: URL(string: "https://fixture.invalid/v1"), api: api,
+            models: [
+              .init(
+                id: "model",
+                capabilities: .init(
+                  textInput: true, imageInput: false, toolCalling: true,
+                  reasoning: false, structuredOutput: false, imageGeneration: false),
+                metadata: [
+                  "cost": .object([
+                    "input": .integer(0), "output": .integer(0),
+                    "cacheRead": .integer(0), "cacheWrite": .integer(0),
+                  ])
+                ])
+            ])
+        ],
+        credentialStore: InMemoryProviderCredentialStore(credentials: [
+          "google-fixture": .apiKey(.init(key: "synthetic-fixture", metadata: [:]))
+        ]), streamingTransport: transport)
+      let adapter = PiAIProviderAdapter(
+        runtime: runtime, providerID: "google-fixture", modelID: "model", protocolID: api,
+        executorID: UUID(), requiredToolRecoveryToolName: nil, onAsset: nil, onRequestUsage: nil)
+      do {
+        _ = try await adapter.generateRound(
+          messages: [.user([.text("Use a Tool")])],
+          tools: [
+            .init(
+              name: "echo", description: "Echoes text",
+              inputSchema: .object(["type": .string("object")]))
+          ],
+          options: .init(
+            maximumOutputTokens: 64, temperature: nil, reasoningEffort: nil,
+            responseSchema: nil, providerOptions: [:], toolChoice: .string("required")))
+        XCTFail("required Tool mode must still reject an ordinary Google response")
+      } catch let error as AIReasoningCoreError {
+        XCTAssertEqual(error.code, .invalidProviderResponse)
+      }
+      let captured = await transport.body
+      let object = try XCTUnwrap(
+        JSONSerialization.jsonObject(with: XCTUnwrap(captured)) as? [String: Any])
+      let config = try XCTUnwrap(object["toolConfig"] as? [String: Any])
+      let choice = try XCTUnwrap(config["functionCallingConfig"] as? [String: Any])
+      XCTAssertEqual(choice["mode"] as? String, "ANY", api)
+    }
+  }
+
   func testExplicitRecoveryToolTurnsRequiredTerminalTextIntoASessionToolRound() async throws {
     let runtime = FakeRuntime { request in responseEvents(for: request, text: "keep working") }
     let adapter = PiAIProviderAdapter(
@@ -2026,6 +2077,22 @@ private actor RequestRecorder {
 
   func record(_ request: ProviderRequest) {
     requests.append(request)
+  }
+}
+
+private actor GoogleToolChoiceTransport: ProviderHTTPStreamingTransport {
+  private(set) var body: Data?
+  func stream(_ request: URLRequest) async throws -> ProviderHTTPStreamingResponse {
+    body = request.httpBody
+    let wire =
+      #"data: {"candidates":[{"content":{"role":"model","parts":[{"text":"ignored"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}"#
+      + "\n\n"
+    return .init(
+      statusCode: 200, headers: ["content-type": "text/event-stream"],
+      body: AsyncThrowingStream {
+        $0.yield(Data(wire.utf8))
+        $0.finish()
+      })
   }
 }
 
