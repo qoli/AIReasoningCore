@@ -6,6 +6,30 @@ import XCTest
 @testable import AIReasoningCore
 
 final class PiAILanguageModelTests: XCTestCase {
+  func testClassifierResultsRemainOutsideLanguageModelSessions() async throws {
+    for streaming in [false, true] {
+      let runtime = FakeRuntime { request in
+        [
+          .classification(
+            .init(
+              protocolID: "typesafe-system-one", providerID: request.providerID,
+              modelID: request.modelID, answers: ["approved": .bool(probability: 0.9)],
+              finishReason: .stop, timestampMilliseconds: 1)), .completed(.stop),
+        ]
+      }
+      let session = LanguageModelSession(
+        model: PiAILanguageModel(runtime: runtime, providerID: "test", modelID: "model"))
+      do {
+        _ =
+          try await streaming
+          ? session.streamResponse(to: "Hello").collect() : session.respond(to: "Hello")
+        XCTFail("Classifier result was accepted as language-model output")
+      } catch let error as AIReasoningCoreError {
+        XCTAssertEqual(error.code, .unsupportedOperation)
+      }
+    }
+  }
+
   func testSnapshotWithoutStartStillValidatesIdentityInBothModes() async throws {
     for wrongIdentity in [false, true] {
       for streaming in [false, true] {

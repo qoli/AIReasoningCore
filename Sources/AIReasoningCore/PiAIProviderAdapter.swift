@@ -312,6 +312,10 @@ struct PiAIProviderAdapter: Sendable {
         }
       }
       switch event {
+      case .classification:
+        throw AIReasoningCoreError(
+          .unsupportedOperation,
+          "Language-model sessions do not consume classifier results")
       case .contentBlock(let block):
         var value: ProviderAssistantContent
         switch block.content {
