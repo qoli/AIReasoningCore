@@ -19,6 +19,7 @@ struct PiAIProviderAdapter: Sendable {
   private let providerID: String
   private let modelID: String
   private let protocolID: String?
+  private let requiredToolEnforcement: PiAILanguageModel.RequiredToolEnforcement
   private let requiredToolRecoveryToolName: String?
   let identity: Identity
   private let onAsset: @Sendable (ProviderAsset) async throws -> Void
@@ -30,6 +31,7 @@ struct PiAIProviderAdapter: Sendable {
     modelID: String,
     protocolID: String? = nil,
     executorID: UUID,
+    requiredToolEnforcement: PiAILanguageModel.RequiredToolEnforcement = .provider,
     requiredToolRecoveryToolName: String?,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)?,
     onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)?
@@ -38,6 +40,7 @@ struct PiAIProviderAdapter: Sendable {
     self.providerID = providerID
     self.modelID = modelID
     self.protocolID = protocolID
+    self.requiredToolEnforcement = requiredToolEnforcement
     self.requiredToolRecoveryToolName = requiredToolRecoveryToolName
     identity = Identity(
       providerID: providerID, modelID: modelID, protocolID: protocolID, executorID: executorID)
@@ -165,7 +168,9 @@ struct PiAIProviderAdapter: Sendable {
     _ options: ProviderGenerationOptions
   ) -> ProviderGenerationOptions {
     let toolChoice: PiAIProviderRuntime.JSONValue?
-    if options.toolChoice == .string("required"),
+    if options.toolChoice == .string("required"), requiredToolEnforcement == .host {
+      toolChoice = .string("auto")
+    } else if options.toolChoice == .string("required"),
       protocolID == "anthropic-messages" || protocolID == "google-generative-ai"
         || protocolID == "google-vertex"
     {
@@ -191,8 +196,8 @@ struct PiAIProviderAdapter: Sendable {
     )
   }
 
-  /// Some OpenAI-compatible runtimes expose Tool definitions but silently treat
-  /// `tool_choice=required` as `auto`. A caller can opt one ordinary Tool into the
+  /// A required turn may omit Tools under Host enforcement or when a runtime
+  /// ignores provider enforcement. A caller can opt one ordinary Tool into the
   /// Foundation Models-owned recovery path. The invalid assistant text remains in
   /// the canonical response and a synthetic call to that Tool lets the Session
   /// execute the correction and own the next provider round. Without an enabled,

@@ -1327,36 +1327,100 @@ final class PiAILanguageModelTests: XCTestCase {
     }
   }
 
-  func testExplicitRecoveryToolTurnsRequiredTerminalTextIntoASessionToolRound() async throws {
-    let runtime = FakeRuntime { request in responseEvents(for: request, text: "keep working") }
-    let adapter = PiAIProviderAdapter(
-      runtime: runtime, providerID: "test", modelID: "model", executorID: UUID(),
-      requiredToolRecoveryToolName: "continue_task", onAsset: nil, onRequestUsage: nil)
-    let options = ProviderGenerationOptions(
-      maximumOutputTokens: nil, temperature: nil, reasoningEffort: nil,
-      responseSchema: nil, providerOptions: [:], toolChoice: .string("required"))
-    let recovery = ProviderToolDefinition(
-      name: "continue_task", description: "Continue", inputSchema: .object([:]))
-
-    let round = try await adapter.generateRound(
-      messages: [.user([.text("Use a Tool")])], tools: [recovery], options: options)
-
-    XCTAssertEqual(round.text, "keep working")
-    XCTAssertEqual(round.toolCalls.map(\.toolName), ["continue_task"])
-    XCTAssertEqual(round.snapshot.finishReason, .toolCalls)
-    XCTAssertEqual(
-      round.snapshot.providerMetadata["ai-reasoning-core.synthetic-required-tool-recovery"],
-      .bool(true))
-    XCTAssertTrue(
-      round.entries.contains {
-        if case .response(let response) = $0 {
-          return response.segments.contains {
-            if case .text(let text) = $0 { return text.content == "keep working" }
-            return false
-          }
+  func testHostEnforcementUsesAutoWireWithThinkingAndRetainsRequiredValidation() async throws {
+    for effort in [ProviderReasoningEffort.max, .off] {
+      let transport = HostToolChoiceTransport()
+      let runtime = try CustomProviderRuntime(
+        providers: [
+          .init(
+            id: "host-fixture", baseURL: URL(string: "https://fixture.invalid/v1"),
+            api: "openai-completions",
+            models: [
+              .init(
+                id: "model",
+                capabilities: .init(
+                  textInput: true, imageInput: false, toolCalling: true,
+                  reasoning: true, structuredOutput: false, imageGeneration: false),
+                metadata: [
+                  "compat": .object(["thinkingFormat": .string("deepseek")]),
+                  "thinkingLevelMap": .object(["off": .string("none"), "max": .string("max")]),
+                  "cost": .object([
+                    "input": .integer(0), "output": .integer(0),
+                    "cacheRead": .integer(0), "cacheWrite": .integer(0),
+                  ]),
+                ])
+            ])
+        ],
+        credentialStore: InMemoryProviderCredentialStore(credentials: [
+          "host-fixture": .apiKey(.init(key: "synthetic-fixture", metadata: [:]))
+        ]), streamingTransport: transport)
+      let adapter = PiAIProviderAdapter(
+        runtime: runtime, providerID: "host-fixture", modelID: "model",
+        protocolID: "openai-completions", executorID: UUID(),
+        requiredToolEnforcement: .host,
+        requiredToolRecoveryToolName: nil, onAsset: nil, onRequestUsage: nil)
+      for choice in ["required", "none"] {
+        do {
+          let result = try await adapter.generateRound(
+            messages: [.user([.text("Synthetic action")])],
+            tools: [.init(name: "echo", description: "Echo", inputSchema: .object([:]))],
+            options: .init(
+              maximumOutputTokens: 64, temperature: nil, reasoningEffort: effort,
+              responseSchema: nil, providerOptions: [:], toolChoice: .string(choice)))
+          XCTAssertEqual(choice, "none", "Host enforcement must still validate required results")
+          XCTAssertEqual(result.text, "terminal")
+        } catch let error as AIReasoningCoreError {
+          XCTAssertEqual(choice, "required")
+          XCTAssertEqual(error.code, .invalidProviderResponse)
         }
-        return false
-      })
+        let captured = await transport.body
+        let body = try XCTUnwrap(
+          JSONSerialization.jsonObject(with: XCTUnwrap(captured)) as? [String: Any])
+        XCTAssertEqual(body["tool_choice"] as? String, choice == "required" ? "auto" : "none")
+        let thinking = try XCTUnwrap(body["thinking"] as? [String: Any])
+        XCTAssertEqual(thinking["type"] as? String, effort == .off ? "disabled" : "enabled")
+        XCTAssertEqual(body["reasoning_effort"] as? String, effort == .off ? nil : "max")
+      }
+    }
+  }
+
+  func testExplicitRecoveryToolTurnsRequiredTerminalTextIntoASessionToolRound() async throws {
+    for enforcement in [PiAILanguageModel.RequiredToolEnforcement.provider, .host] {
+      let runtime = FakeRuntime { request in
+        XCTAssertEqual(
+          request.options.toolChoice, .string(enforcement == .host ? "auto" : "required"))
+        return responseEvents(for: request, text: "keep working")
+      }
+      let adapter = PiAIProviderAdapter(
+        runtime: runtime, providerID: "test", modelID: "model", executorID: UUID(),
+        requiredToolEnforcement: enforcement, requiredToolRecoveryToolName: "continue_task",
+        onAsset: nil, onRequestUsage: nil)
+      let options = ProviderGenerationOptions(
+        maximumOutputTokens: nil, temperature: nil, reasoningEffort: nil,
+        responseSchema: nil, providerOptions: [:], toolChoice: .string("required"))
+      let recovery = ProviderToolDefinition(
+        name: "continue_task", description: "Continue", inputSchema: .object([:]))
+
+      let round = try await adapter.generateRound(
+        messages: [.user([.text("Use a Tool")])], tools: [recovery], options: options)
+
+      XCTAssertEqual(round.text, "keep working")
+      XCTAssertEqual(round.toolCalls.map(\.toolName), ["continue_task"])
+      XCTAssertEqual(round.snapshot.finishReason, .toolCalls)
+      XCTAssertEqual(
+        round.snapshot.providerMetadata["ai-reasoning-core.synthetic-required-tool-recovery"],
+        .bool(true))
+      XCTAssertTrue(
+        round.entries.contains {
+          if case .response(let response) = $0 {
+            return response.segments.contains {
+              if case .text(let text) = $0 { return text.content == "keep working" }
+              return false
+            }
+          }
+          return false
+        })
+    }
   }
 
   func testCustomGenerationOptionsMapToProviderRequest() async throws {
@@ -2077,6 +2141,23 @@ private actor RequestRecorder {
 
   func record(_ request: ProviderRequest) {
     requests.append(request)
+  }
+}
+
+private actor HostToolChoiceTransport: ProviderHTTPStreamingTransport {
+  private(set) var body: Data?
+
+  func stream(_ request: URLRequest) async throws -> ProviderHTTPStreamingResponse {
+    body = request.httpBody
+    let wire =
+      #"data: {"id":"host-fixture","choices":[{"delta":{"content":"terminal"},"finish_reason":"stop"}]}"#
+      + "\n\ndata: [DONE]\n\n"
+    return .init(
+      statusCode: 200, headers: ["content-type": "text/event-stream"],
+      body: AsyncThrowingStream {
+        $0.yield(Data(wire.utf8))
+        $0.finish()
+      })
   }
 }
 

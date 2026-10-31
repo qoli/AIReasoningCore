@@ -22,6 +22,12 @@ public struct PiAIRequestUsage: Sendable, Equatable {
 public struct PiAILanguageModel: LanguageModel {
   public typealias UnavailableReason = Never
 
+  public enum RequiredToolEnforcement: Sendable {
+    case provider
+    /// Send `auto` while retaining required-result validation and opt-in recovery.
+    case host
+  }
+
   public struct CustomGenerationOptions: AnyLanguageModel.CustomGenerationOptions {
     public var reasoningEffort: ProviderReasoningEffort?
     public var providerOptions: [String: PiAIProviderRuntime.JSONValue]
@@ -67,6 +73,7 @@ public struct PiAILanguageModel: LanguageModel {
     modelID: String,
     protocolID: String? = nil,
     capabilities: ProviderCapabilities? = nil,
+    requiredToolEnforcement: RequiredToolEnforcement = .provider,
     requiredToolRecoveryToolName: String? = nil,
     onAsset: (@Sendable (ProviderAsset) async throws -> Void)? = nil,
     onRequestUsage: (@Sendable (PiAIRequestUsage) -> Void)? = nil
@@ -78,6 +85,7 @@ public struct PiAILanguageModel: LanguageModel {
       modelID: modelID,
       protocolID: protocolID,
       executorID: executorID,
+      requiredToolEnforcement: requiredToolEnforcement,
       requiredToolRecoveryToolName: requiredToolRecoveryToolName,
       onAsset: onAsset,
       onRequestUsage: onRequestUsage
