@@ -34,7 +34,7 @@
       "location" : "https://github.com/qoli/pi-ai-swift.git",
       "state" : {
         "branch" : "main",
-        "revision" : "9aad62536729b2bbad6ab6ab403b8281a985c366"
+        "revision" : "db13c293a390f06fde1be9ad14b081547e12efdd"
       }
     },
     {
@@ -53,6 +53,15 @@
       "state" : {
         "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
         "version" : "602.0.0"
+      }
+    },
+    {
+      "identity" : "zstd",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/facebook/zstd.git",
+      "state" : {
+        "revision" : "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+        "version" : "1.5.7"
       }
     }
   ],
