@@ -60,6 +60,8 @@ struct LiveProviderResult: Identifiable, Codable, Sendable {
 struct LiveAuthorizationPresentation: Equatable, Sendable {
   enum ResponseKind: Equatable, Sendable {
     case information
+    case acknowledgement([AuthorizationLink])
+    case choice([AuthorizationChoice])
     case value(AuthorizationPromptKind)
     case callbackURL
   }

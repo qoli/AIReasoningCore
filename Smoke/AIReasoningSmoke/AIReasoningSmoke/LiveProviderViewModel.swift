@@ -148,9 +148,15 @@ final class LiveProviderViewModel: ObservableObject {
         return
       }
       finishChallenge(returning: .callbackURL(url))
-    case .information:
+    case .information, .acknowledgement, .choice:
       return
     }
+    authorizationInput = ""
+    authorizationPresentation = nil
+  }
+
+  func submitAuthorizationResponse(_ response: AuthorizationResponse) {
+    finishChallenge(returning: response)
     authorizationInput = ""
     authorizationPresentation = nil
   }
@@ -342,6 +348,28 @@ final class LiveProviderViewModel: ObservableObject {
   {
     try Task.checkCancellation()
     switch challenge {
+    case .choice(let providerID, _, let message, let options):
+      authorizationPresentation = LiveAuthorizationPresentation(
+        providerID: providerID,
+        title: "Provider choice",
+        message: message,
+        responseKind: .choice(options),
+        url: nil,
+        userCode: nil
+      )
+      authorizationStatus = "Provider choice required"
+      return try await awaitChallengeResponse()
+    case .information(let providerID, let message, let links):
+      authorizationPresentation = LiveAuthorizationPresentation(
+        providerID: providerID,
+        title: "Provider information",
+        message: message,
+        responseKind: .acknowledgement(links),
+        url: nil,
+        userCode: nil
+      )
+      authorizationStatus = "Provider acknowledgement required"
+      return try await awaitChallengeResponse()
     case .progress(_, let message):
       authorizationStatus = message
       return .acknowledged

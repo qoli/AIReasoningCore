@@ -350,6 +350,8 @@ private func responseSnapshot(
         return .reasoning(reasoning)
       case .toolCall(let call):
         return .toolCall(call)
+      case .textUTF16, .unrecognized:
+        preconditionFailure("Input-only content cannot be used as a response fixture")
       }
     },
     usage: usage,

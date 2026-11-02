@@ -222,6 +222,19 @@ private struct LiveProviderView: View {
           .font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
       }
       switch value.responseKind {
+      case .choice(let options):
+        ForEach(options, id: \.id) { option in
+          Button(option.label) {
+            viewModel.submitAuthorizationResponse(.value(option.id))
+          }
+        }
+      case .acknowledgement(let links):
+        ForEach(links, id: \.url) { link in
+          Link(link.label, destination: link.url)
+        }
+        Button("Continue") {
+          viewModel.submitAuthorizationResponse(.acknowledged)
+        }
       case .value(let kind):
         if kind == .secret {
           SecureField("Response", text: $viewModel.authorizationInput)
