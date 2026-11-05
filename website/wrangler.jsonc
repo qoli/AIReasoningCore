@@ -1,0 +1,13 @@
+{
+  "name": "aireasoningcore-site",
+  "account_id": "e2cd7e5fa2b6a5fcc9b523133945019b",
+  "compatibility_date": "2026-11-05",
+  "workers_dev": false,
+  "assets": {
+    "directory": "./dist",
+    "html_handling": "auto-trailing-slash"
+  },
+  "routes": [
+    { "pattern": "aireasoningcore.ronniewong.cc", "custom_domain": true }
+  ]
+}
