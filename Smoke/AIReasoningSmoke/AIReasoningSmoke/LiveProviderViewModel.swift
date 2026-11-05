@@ -238,6 +238,7 @@ final class LiveProviderViewModel: ObservableObject {
     )
     credentialStore = store
     runtime = try BuiltinProviderRuntime(
+      installation: .persistent(at: root),
       credentialStore: store,
       radiusCatalogPersistenceURL: root.appendingPathComponent("RadiusCatalog.json")
     )
