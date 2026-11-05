@@ -125,7 +125,7 @@
 			packageReferences = (
 				A10000000000000000000050 /* XCLocalSwiftPackageReference "../.." */,
 				A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */,
-				A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */,
+				A10000000000000000000052 /* XCLocalSwiftPackageReference "../../../pi-ai-swift" */,
 			);
 			productRefGroup = A10000000000000000000005 /* Products */;
 			projectDirPath = "";
@@ -277,20 +277,16 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../..;
 		};
+		A10000000000000000000052 /* XCLocalSwiftPackageReference "../../../pi-ai-swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../../pi-ai-swift";
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		A10000000000000000000051 /* XCRemoteSwiftPackageReference "AnyLanguageModel" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/qoli/AnyLanguageModel.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/qoli/pi-ai-swift.git";
 			requirement = {
 				branch = main;
 				kind = branch;
@@ -311,7 +307,7 @@
 		};
 		A10000000000000000000062 /* PiAIProviderRuntime */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A10000000000000000000052 /* XCRemoteSwiftPackageReference "pi-ai-swift" */;
+			package = A10000000000000000000052 /* XCLocalSwiftPackageReference "../../../pi-ai-swift" */;
 			productName = PiAIProviderRuntime;
 		};
 /* End XCSwiftPackageProductDependency section */
