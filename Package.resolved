@@ -29,15 +29,6 @@
       }
     },
     {
-      "identity" : "pi-ai-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/qoli/pi-ai-swift.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "8b92ad8c15791c38a6c3bad94aed354b0ac07757"
-      }
-    },
-    {
       "identity" : "swift-collections",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
